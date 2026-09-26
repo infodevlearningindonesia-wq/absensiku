@@ -722,231 +722,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadAbsensiFromDb();
   }
 
-  // Edit Catatan / Keterangan Kehadiran dari Beranda (Update CRUD)
-  Future<void> _editAbsensi(Map<String, dynamic> item) async {
-    final id = item[DatabaseHelper.columnId] as int;
-    final apiId = item[DatabaseHelper.columnApiId]?.toString();
-    final tipe = item[DatabaseHelper.columnTipe] as String? ?? 'Masuk';
-    final tanggal = item[DatabaseHelper.columnTanggal] as String? ?? '';
-    final oldWaktu = item[DatabaseHelper.columnWaktu] as String? ?? '';
-    final oldKet = item[DatabaseHelper.columnKeterangan] as String? ?? '';
-    final lat = (item[DatabaseHelper.columnLatitude] as num?)?.toDouble();
-    final lon = (item[DatabaseHelper.columnLongitude] as num?)?.toDouble();
-    final isSync = (item[DatabaseHelper.columnStatusSync] as int? ?? 0) == 1;
-
-    final ketController = TextEditingController(text: oldKet);
-    final waktuController = TextEditingController(text: oldWaktu);
-    bool isSaving = false;
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (modalCtx, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                top: 20,
-                left: 20,
-                right: 20,
-                bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 24,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        const Icon(Icons.edit_calendar, color: Colors.blueAccent),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Perbarui Absen $tipe ($tanggal)',
-                            style: Theme.of(modalCtx).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: ketController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: 'Catatan / Keterangan Kehadiran',
-                        hintText: 'Masukkan catatan kegiatan atau penyesuaian alamat...',
-                        prefixIcon: const Icon(Icons.notes),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: waktuController,
-                      decoration: InputDecoration(
-                        labelText: 'Waktu Presensi (HH:MM:SS)',
-                        hintText: 'Contoh: 08:00:00',
-                        prefixIcon: const Icon(Icons.access_time),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: isSaving ? null : () => Navigator.pop(modalCtx),
-                            child: const Text('Batal'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: isSaving
-                                ? null
-                                : () async {
-                                    final newKet = ketController.text.trim();
-                                    final newWkt = waktuController.text.trim().isEmpty
-                                        ? oldWaktu
-                                        : waktuController.text.trim();
-
-                                    setModalState(() => isSaving = true);
-
-                                    // 1. Perbarui ke SQLite lokal
-                                    await DatabaseHelper.instance.updateAbsensi(id, {
-                                      DatabaseHelper.columnKeterangan: newKet,
-                                      DatabaseHelper.columnWaktu: newWkt,
-                                    });
-
-                                    // 2. Jika sudah pernah disinkronkan ke API, perbarui juga di server API
-                                    UpdateAbsensiResult? apiUpdateResult;
-                                    if (isSync &&
-                                        apiId != null &&
-                                        apiId.isNotEmpty &&
-                                        apiId != '0' &&
-                                        apiId != 'null') {
-                                      try {
-                                        apiUpdateResult = await AppApiService.updateAbsensiOnApi(
-                                          oldApiId: apiId,
-                                          tipe: tipe,
-                                          tanggal: tanggal,
-                                          waktu: newWkt,
-                                          latitude: lat,
-                                          longitude: lon,
-                                          keterangan: newKet,
-                                        );
-                                        if (apiUpdateResult.success && apiUpdateResult.newApiId != null) {
-                                          await DatabaseHelper.instance.updateAbsensi(id, {
-                                            DatabaseHelper.columnApiId: apiUpdateResult.newApiId,
-                                            DatabaseHelper.columnStatusSync: 1,
-                                          });
-                                        }
-                                      } catch (e) {
-                                        apiUpdateResult = UpdateAbsensiResult(
-                                          success: false,
-                                          message: e.toString(),
-                                        );
-                                      }
-                                    }
-
-                                    if (modalCtx.mounted) {
-                                      Navigator.pop(modalCtx);
-                                    }
-
-                                    await _loadAbsensiFromDb();
-
-                                    if (!mounted) return;
-                                    showDialog(
-                                      context: context,
-                                      builder: (c) => AlertDialog(
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                        title: const Row(
-                                          children: [
-                                            Icon(Icons.check_circle, color: Colors.green),
-                                            SizedBox(width: 8),
-                                            Expanded(child: Text('Data Berhasil Diperbarui')),
-                                          ],
-                                        ),
-                                        content: SingleChildScrollView(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Text('Perubahan data absensi telah disimpan:'),
-                                              const SizedBox(height: 8),
-                                              const Text('• Database Lokal (SQLite): Tersimpan'),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                apiUpdateResult != null
-                                                    ? '• Server API: ${apiUpdateResult.success ? "Berhasil Diperbarui (${apiUpdateResult.message})" : "Gagal Sync (${apiUpdateResult.message})"}'
-                                                    : (isSync
-                                                        ? '• Server API: Tersimpan Lokal'
-                                                        : '• Server API: Siap disinkronkan (Status: Belum Sync)'),
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w600,
-                                                  color: (apiUpdateResult?.success ?? false)
-                                                      ? Colors.green.shade800
-                                                      : Colors.orange.shade900,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        actions: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: ElevatedButton(
-                                                  onPressed: () => Navigator.pop(c),
-                                                  child: const Text('OK'),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blueAccent,
-                              foregroundColor: Colors.white,
-                            ),
-                            child: isSaving
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                  )
-                                : const Text('Simpan Perubahan'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
   // Hapus semua riwayat presensi secara PERMANEN (TIDAK mempengaruhi akun login)
   Future<void> _hapusSemuaRiwayatHome() async {
     final confirm = await showDialog<bool>(
@@ -1086,6 +861,27 @@ class _HomeScreenState extends State<HomeScreen> {
               if (lat != null && lon != null)
                 _buildDetailItemRow('Koordinat GPS', '$lat, $lon'),
               _buildDetailItemRow('Keterangan / Lokasi', keterangan),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade200),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.lock_outline, size: 16, color: Colors.brown),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Catatan presensi kehadiran resmi terkunci otomatis dan tidak dapat diedit.',
+                        style: TextStyle(fontSize: 11, color: Colors.brown, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
@@ -1098,19 +894,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Tutup')),
                 ),
               ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    _editAbsensi(item);
-                  },
-                  icon: const Icon(Icons.edit, size: 15),
-                  label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Edit')),
-                ),
-              ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
@@ -1122,7 +906,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.pop(ctx);
                     _hapusAbsensi(id);
                   },
-                  icon: const Icon(Icons.delete, size: 15),
+                  icon: const Icon(Icons.delete_outline, size: 16),
                   label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Hapus')),
                 ),
               ),
@@ -2005,20 +1789,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ],
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined, color: Colors.blueAccent, size: 20),
-                            tooltip: 'Edit Catatan',
-                            onPressed: () => _editAbsensi(item),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                            tooltip: 'Hapus data',
-                            onPressed: () => _hapusAbsensi(id),
-                          ),
-                        ],
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                        tooltip: 'Hapus data',
+                        onPressed: () => _hapusAbsensi(id),
                       ),
                     ),
                   );
