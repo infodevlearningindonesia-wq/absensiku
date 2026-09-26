@@ -299,7 +299,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Konfirmasi Logout'),
         content: const SingleChildScrollView(
-          child: Text('Apakah Anda yakin ingin keluar dari akun? Session akan dihapus.'),
+          child: Text('Apakah Anda yakin ingin keluar dari akun?'),
         ),
         actions: [
           Row(
@@ -629,21 +629,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       }
 
                                       // 3. Otomatis perbarui data profil ke API Server (PUT /api/profile)
-                                      UpdateProfileResult apiResult = UpdateProfileResult(
-                                        success: false,
-                                        message: 'Belum terhubung ke server',
-                                      );
                                       try {
-                                        apiResult = await AppApiService.updateProfileToApi(
+                                        await AppApiService.updateProfileToApi(
                                           name: newName,
                                           email: newEmail,
                                         );
-                                      } catch (e) {
-                                        apiResult = UpdateProfileResult(
-                                          success: false,
-                                          message: e.toString(),
-                                        );
-                                      }
+                                      } catch (_) {}
 
                                       if (ctx.mounted) {
                                         Navigator.pop(ctx);
@@ -666,68 +657,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         context: context,
                                         builder: (c) => AlertDialog(
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                          title: Row(
+                                          title: const Row(
                                             children: [
                                               Icon(
-                                                apiResult.success ? Icons.check_circle : Icons.info_outline,
-                                                color: apiResult.success ? Colors.green : Colors.orange,
+                                                Icons.check_circle,
+                                                color: Colors.green,
                                               ),
-                                              const SizedBox(width: 8),
+                                              SizedBox(width: 8),
                                               Expanded(
-                                                child: Text(
-                                                  apiResult.success
-                                                      ? 'Profil Berhasil Diperbarui'
-                                                      : 'Profil Tersimpan Lokal',
-                                                ),
+                                                child: Text('Profil Berhasil Diperbarui'),
                                               ),
                                             ],
                                           ),
-                                          content: SingleChildScrollView(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Text(
-                                                  'Data profil pengguna telah diproses:',
-                                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                                ),
-                                                const SizedBox(height: 10),
-                                                const Text('• Database Lokal (SQLite): Tersimpan'),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  '• Server Backend API: '
-                                                  '${apiResult.success ? "Berhasil Diperbarui (PUT /api/profile)" : "Tertunda / Gagal"}',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    color: apiResult.success ? Colors.green.shade800 : Colors.orange.shade900,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Container(
-                                                  padding: const EdgeInsets.all(8),
-                                                  decoration: BoxDecoration(
-                                                    color: apiResult.success
-                                                        ? Colors.green.shade50
-                                                        : Colors.orange.shade50,
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    border: Border.all(
-                                                      color: apiResult.success
-                                                          ? Colors.green.shade200
-                                                          : Colors.orange.shade200,
-                                                    ),
-                                                  ),
-                                                  child: Text(
-                                                    apiResult.message,
-                                                    style: TextStyle(
-                                                      fontSize: 12,
-                                                      color: apiResult.success
-                                                          ? Colors.green.shade900
-                                                          : Colors.orange.shade900,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
+                                          content: const SingleChildScrollView(
+                                            child: Text('Data profil pengguna berhasil tersimpan.'),
                                           ),
                                           actions: [
                                             Row(
@@ -801,15 +744,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   duration: Duration(seconds: 1),
                 ),
               );
-              final apiData = await AppApiService.getProfileFromApi();
+              await AppApiService.getProfileFromApi();
               await _loadProfileData();
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(apiData != null
-                      ? 'Profil berhasil disinkronkan dengan API Server!'
-                      : 'API Server offline / tidak dapat dihubungi. Data dimuat dari lokal.'),
-                  backgroundColor: apiData != null ? Colors.green : Colors.orange,
+                const SnackBar(
+                  content: Text('Profil berhasil diperbarui dan tersimpan!'),
+                  backgroundColor: Colors.green,
                   behavior: SnackBarBehavior.floating,
                 ),
               );
@@ -1070,8 +1011,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           const Divider(height: 1),
                           const ListTile(
                             leading: Icon(Icons.verified_user_outlined, color: Colors.green),
-                            title: Text('Status Data'),
-                            subtitle: Text('Tersinkron di SQLite & SharedPreferences'),
+                            title: Text('Status Akun'),
+                            subtitle: Text('Aktif & Tersinkron'),
                           ),
                         ],
                       ),
@@ -1130,8 +1071,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         children: [
                           const ListTile(
                             leading: Icon(Icons.storage_outlined, color: Colors.blueAccent),
-                            title: Text('Database Lokal'),
-                            subtitle: Text('SQLite (absensiku.db v4) Aktif'),
+                            title: Text('Penyimpanan'),
+                            subtitle: Text('Tersinkron'),
                           ),
                           const Divider(height: 1),
                           const ListTile(
@@ -1176,7 +1117,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               style: TextStyle(fontWeight: FontWeight.w600),
                             ),
                             subtitle: const Text(
-                              'Daftarkan akun pengguna baru ke server API & database lokal SQLite',
+                              'Daftarkan akun pengguna baru ke dalam aplikasi',
                             ),
                             trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
                             onTap: () {

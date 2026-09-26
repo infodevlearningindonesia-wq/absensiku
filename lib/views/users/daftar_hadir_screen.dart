@@ -86,7 +86,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
               Text('Sinkronisasi Selesai'),
             ],
           ),
-          content: const Text('Semua catatan absensi di perangkat sudah tersinkron ke API server.'),
+          content: const Text('Semua catatan absensi sudah berhasil tersinkron.'),
           actions: [
             Row(
               children: [
@@ -307,8 +307,8 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
               _buildDetailInfoRow('Waktu', '$waktu WIB'),
               _buildDetailInfoRow('Tipe', tipe),
               _buildDetailInfoRow(
-                'Status Sync',
-                isSync ? 'Sudah Tersinkron ke Server' : 'Tersimpan Lokal (SQLite)',
+                'Status',
+                isSync ? 'Tersinkron' : 'Tersimpan',
               ),
               if (lat != null && lon != null) ...[
                 _buildDetailInfoRow('Koordinat GPS', '$lat, $lon'),
@@ -417,9 +417,9 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
         ),
         content: const SingleChildScrollView(
           child: Text(
-            'Catatan kehadiran ini akan dihapus secara PERMANEN dari database dan server API.\n\n'
-            '• Data yang dihapus TIDAK akan muncul kembali saat reload.\n'
-            '• Akun Anda yang sedang login TIDAK akan terpengaruh sama sekali.',
+            'Catatan kehadiran ini akan dihapus secara permanen.\n\n'
+            '• Data yang dihapus tidak akan muncul kembali.\n'
+            '• Akun Anda yang sedang login tetap aktif.',
           ),
         ),
         actions: [
@@ -457,13 +457,12 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
 
     // 2. Hapus juga di API menggunakan ID API yang sebenarnya (hanya jika valid api_id)
     final apiId = deleted?[DatabaseHelper.columnApiId]?.toString();
-    bool apiDeleted = false;
     if (apiId != null &&
         apiId.isNotEmpty &&
         apiId != '0' &&
         apiId != 'null') {
       try {
-        apiDeleted = await AppApiService.deleteAbsensiFromApi(apiId);
+        await AppApiService.deleteAbsensiFromApi(apiId);
       } catch (_) {}
     }
 
@@ -476,9 +475,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
             const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(apiDeleted
-                  ? 'Catatan kehadiran berhasil dihapus dari database lokal dan server API.'
-                  : 'Catatan kehadiran berhasil dihapus dari database lokal.'),
+              child: const Text('Catatan kehadiran berhasil dihapus.'),
             ),
           ],
         ),
@@ -504,9 +501,9 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
         ),
         content: const SingleChildScrollView(
           child: Text(
-            'Seluruh data kehadiran akan dihapus secara PERMANEN dari database dan server API.\n\n'
-            '• Data yang dihapus TIDAK akan muncul kembali saat reload.\n'
-            '• Akun Anda yang sedang login TIDAK akan terpengaruh sama sekali.',
+            'Seluruh data kehadiran akan dihapus secara permanen.\n\n'
+            '• Data yang dihapus tidak akan muncul kembali.\n'
+            '• Akun Anda yang sedang login tetap aktif.',
           ),
         ),
         actions: [
@@ -791,7 +788,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
                                                   borderRadius: BorderRadius.circular(6),
                                                 ),
                                                 child: Text(
-                                                  isSync ? 'Sudah Sync' : 'Lokal (SQLite)',
+                                                  isSync ? 'Tersinkron' : 'Tersimpan',
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,

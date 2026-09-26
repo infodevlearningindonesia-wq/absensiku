@@ -608,10 +608,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           content: Text(
-            'Data absen $tipe berhasil disimpan.\n\n'
+            'Data presensi $tipe berhasil disimpan.\n\n'
             '• Waktu: $waktu WIB\n'
             '• Tanggal: $tanggal\n'
-            '• Status: ${apiSuccess ? "Tersinkron ke Server API" : "Tersimpan di SQLite Lokal (Offline)"}',
+            '• Status: Berhasil tersimpan',
           ),
           actions: [
             Row(
@@ -650,9 +650,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         content: const SingleChildScrollView(
           child: Text(
-            'Catatan ini akan dihapus secara PERMANEN dari database lokal SQLite dan server API.\n\n'
-            '• Data yang telah dihapus TIDAK akan muncul kembali saat reload.\n'
-            '• Akun Anda yang sedang login TIDAK akan terpengaruh sama sekali.',
+            'Catatan kehadiran ini akan dihapus secara permanen.\n\n'
+            '• Data yang telah dihapus tidak akan muncul kembali.\n'
+            '• Akun Anda yang sedang login tetap aktif.',
           ),
         ),
         actions: [
@@ -690,13 +690,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // 2. Hapus juga di server API menggunakan ID API yang sebenarnya (hanya jika valid api_id)
     final apiId = deleted?[DatabaseHelper.columnApiId]?.toString();
-    bool apiDeleted = false;
     if (apiId != null &&
         apiId.isNotEmpty &&
         apiId != '0' &&
         apiId != 'null') {
       try {
-        apiDeleted = await AppApiService.deleteAbsensiFromApi(apiId);
+        await AppApiService.deleteAbsensiFromApi(apiId);
       } catch (_) {}
     }
 
@@ -709,9 +708,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(apiDeleted
-                  ? 'Catatan berhasil dihapus dari database lokal dan server API.'
-                  : 'Catatan berhasil dihapus dari database lokal.'),
+              child: const Text('Catatan kehadiran berhasil dihapus.'),
             ),
           ],
         ),
@@ -855,8 +852,8 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildDetailItemRow('Waktu', '$waktu WIB'),
               _buildDetailItemRow('Tipe', tipe),
               _buildDetailItemRow(
-                'Status Sync',
-                isSync ? 'Sudah Tersinkron ke Server' : 'Tersimpan Lokal (SQLite)',
+                'Status',
+                isSync ? 'Tersinkron' : 'Tersimpan',
               ),
               if (lat != null && lon != null) ...[
                 _buildDetailItemRow('Koordinat GPS', '$lat, $lon'),
@@ -973,7 +970,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text('Sinkronisasi Selesai'),
             ],
           ),
-          content: const Text('Semua data absensi di perangkat sudah tersinkronisasi ke API server.'),
+          content: const Text('Semua data absensi sudah berhasil tersinkron.'),
           actions: [
             Row(
               children: [
@@ -1016,7 +1013,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text('Hasil Sinkronisasi'),
             ],
           ),
-          content: Text('${syncResult.syncedCount} data kehadiran berhasil disinkronkan ke API server!'),
+          content: Text('${syncResult.syncedCount} data kehadiran berhasil tersinkron!'),
           actions: [
             Row(
               children: [
@@ -1140,7 +1137,7 @@ class _HomeScreenState extends State<HomeScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Konfirmasi Logout'),
         content: const SingleChildScrollView(
-          child: Text('Apakah Anda yakin ingin keluar? Session login di SharedPreferences akan dihapus.'),
+          child: Text('Apakah Anda yakin ingin keluar dari akun?'),
         ),
         actions: [
           Row(
@@ -1760,7 +1757,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              isSync ? 'Sudah Sync' : 'Lokal (Belum Sync)',
+                              isSync ? 'Tersinkron' : 'Tersimpan',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,

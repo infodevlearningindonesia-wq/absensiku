@@ -153,7 +153,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  response.message ?? 'Akun baru ($email) berhasil didaftarkan ke server API dan tersimpan di database lokal SQLite.',
+                  response.message ?? 'Akun baru ($email) berhasil didaftarkan dan tersimpan.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
@@ -265,7 +265,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
             content: SingleChildScrollView(
               child: Text(
-                'Email ($email) sudah terdaftar di server API backend.\n\n'
+                'Email ($email) sudah terdaftar.\n\n'
                 'Silakan langsung login menggunakan email ini atau gunakan email baru.',
               ),
             ),

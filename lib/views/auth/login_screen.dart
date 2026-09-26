@@ -92,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  response.message ?? 'Login API berhasil! Selamat datang $userName.',
+                  response.message ?? 'Login berhasil! Selamat datang $userName.',
                 ),
               ),
             ],
@@ -137,7 +137,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text('Login berhasil (Mode Offline SQLite)! Selamat datang $userName.'),
+                  child: Text('Login berhasil! Selamat datang $userName.'),
                 ),
               ],
             ),

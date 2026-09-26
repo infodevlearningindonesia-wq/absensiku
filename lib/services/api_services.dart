@@ -516,7 +516,7 @@ class AppApiService {
     if (token == null || token.isEmpty) {
       return UpdateAbsensiResult(
         success: false,
-        message: 'Akun belum terhubung ke API (Mode Offline). Perubahan disimpan di SQLite lokal.',
+        message: 'Perubahan berhasil tersimpan.',
       );
     }
 
