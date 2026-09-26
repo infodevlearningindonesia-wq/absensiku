@@ -1,9 +1,17 @@
 import 'package:dio/dio.dart';
 
-Dio createDioClient() {
+class AppConfig {
+  static const String defaultBaseUrl = 'https://absensib1.mobileprojp.com';
+  static const String baseUrl = String.fromEnvironment(
+    'BASE_URL',
+    defaultValue: defaultBaseUrl,
+  );
+}
+
+Dio createDioClient({String? baseUrl}) {
   final dio = Dio(
     BaseOptions(
-      baseUrl: 'https://absensib1.mobileprojp.com',
+      baseUrl: baseUrl ?? AppConfig.baseUrl,
       connectTimeout: const Duration(
         seconds: 10,
       ), // Timeout saat mencoba menghubungkan ke server
