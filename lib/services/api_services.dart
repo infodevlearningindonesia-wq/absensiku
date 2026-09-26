@@ -29,6 +29,7 @@ class AppApiService {
     double? latitude,
     double? longitude,
     String? keterangan,
+    bool isFromSync = false,
   }) async {
     final token = await PrefHelper.getToken();
     if (token == null || token.isEmpty) return false;
@@ -43,8 +44,8 @@ class AppApiService {
     final isMasuk = cleanTipe == 'masuk' || cleanTipe.contains('in');
     final endpoint = isMasuk ? '/api/absen/check-in' : '/api/absen/check-out';
 
-    // Jika ini Absen Keluar, pastikan absen masuk yang pending telah terkirim ke server terlebih dahulu
-    if (!isMasuk) {
+    // Jika ini Absen Keluar dan bukan dari proses sync, pastikan absen masuk yang pending telah terkirim ke server terlebih dahulu
+    if (!isMasuk && !isFromSync) {
       try {
         await syncAllPendingToApi();
       } catch (_) {}
@@ -223,6 +224,7 @@ class AppApiService {
         latitude: lat,
         longitude: lon,
         keterangan: ket,
+        isFromSync: true,
       );
 
       if (success) {
@@ -233,8 +235,19 @@ class AppApiService {
     return syncedCount;
   }
 
+  static bool _isSyncing = false;
+
   // 7. SINKRONISASI OTOMATIS MENYELURUH (Dua Arah: SQLite <-> Server API)
   static Future<Map<String, dynamic>> autoSyncAllData() async {
+    if (_isSyncing) {
+      return {
+        'pendingSynced': 0,
+        'apiItemsSynced': 0,
+        'profileSynced': false,
+      };
+    }
+
+    _isSyncing = true;
     int pendingSynced = 0;
     int apiItemsSynced = 0;
     bool profileSynced = false;
@@ -380,7 +393,10 @@ class AppApiService {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _isSyncing = false;
+    }
 
     return {
       'pendingSynced': pendingSynced,

@@ -107,6 +107,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
     );
 
     final count = await AppApiService.syncAllPendingToApi();
+    await _loadDaftarHadir();
     if (!mounted) return;
 
     showDialog(

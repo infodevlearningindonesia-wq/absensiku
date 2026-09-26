@@ -924,6 +924,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     final count = await AppApiService.syncAllPendingToApi();
+    await _loadAbsensiFromDb();
     if (!mounted) return;
 
     showDialog(

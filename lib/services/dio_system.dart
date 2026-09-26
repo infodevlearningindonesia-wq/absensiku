@@ -10,6 +10,9 @@ Dio createDioClient() {
       receiveTimeout: const Duration(
         seconds: 10,
       ), // Timeout saat menunggu respon data
+      sendTimeout: const Duration(
+        seconds: 10,
+      ), // Timeout saat mengirim payload data
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
