@@ -20,9 +20,21 @@ abstract class ApiService {
   Future<AuthResponseModel> register(@Body() RegisterModel body);
 }
 
+class SubmitAbsensiResult {
+  final bool success;
+  final String? apiId;
+  final String? message;
+
+  SubmitAbsensiResult({
+    required this.success,
+    this.apiId,
+    this.message,
+  });
+}
+
 class AppApiService {
-  // 1. Submit Absensi ke Server API
-  static Future<bool> submitAbsensiToApi({
+  // 1. Submit Absensi ke Server API (Absen Masuk & Absen Keluar)
+  static Future<SubmitAbsensiResult> submitAbsensiToApi({
     required String tipe,
     required String tanggal,
     required String waktu,
@@ -32,7 +44,9 @@ class AppApiService {
     bool isFromSync = false,
   }) async {
     final token = await PrefHelper.getToken();
-    if (token == null || token.isEmpty) return false;
+    if (token == null || token.isEmpty) {
+      return SubmitAbsensiResult(success: false, message: 'Token otentikasi tidak ditemukan');
+    }
 
     final lat = latitude ?? -6.200000;
     final lng = longitude ?? 106.816666;
@@ -58,11 +72,23 @@ class AppApiService {
               'check_in_lat': lat,
               'check_in_lng': lng,
               'check_in_address': alamat,
+              'latitude': lat,
+              'longitude': lng,
+              'address': alamat,
+              'keterangan': alamat,
+              'date': tanggal,
+              'time': waktu,
             }
           : {
               'check_out_lat': lat,
               'check_out_lng': lng,
               'check_out_address': alamat,
+              'latitude': lat,
+              'longitude': lng,
+              'address': alamat,
+              'keterangan': alamat,
+              'date': tanggal,
+              'time': waktu,
             };
 
       final response = await dio.post(
@@ -75,9 +101,28 @@ class AppApiService {
         ),
         data: data,
       );
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (_) {
-      return false;
+
+      final isSuccess = response.statusCode == 200 || response.statusCode == 201;
+      String? apiId;
+      String? message;
+
+      if (response.data is Map) {
+        final resMap = response.data as Map;
+        message = resMap['message']?.toString();
+        if (resMap['data'] is Map && resMap['data']['id'] != null) {
+          apiId = resMap['data']['id'].toString();
+        } else if (resMap['id'] != null) {
+          apiId = resMap['id'].toString();
+        }
+      }
+
+      return SubmitAbsensiResult(
+        success: isSuccess,
+        apiId: apiId,
+        message: message,
+      );
+    } catch (e) {
+      return SubmitAbsensiResult(success: false, message: e.toString());
     }
   }
 
@@ -99,9 +144,14 @@ class AppApiService {
       );
 
       if (response.statusCode == 200 && response.data != null) {
-        final data = response.data['data'];
-        if (data is List) {
-          return List<Map<String, dynamic>>.from(data.whereType<Map<String, dynamic>>());
+        dynamic rawList;
+        if (response.data is List) {
+          rawList = response.data;
+        } else if (response.data is Map && response.data['data'] is List) {
+          rawList = response.data['data'];
+        }
+        if (rawList is List) {
+          return List<Map<String, dynamic>>.from(rawList.whereType<Map<String, dynamic>>());
         }
       }
       return [];
@@ -217,7 +267,7 @@ class AppApiService {
       final lon = (item[DatabaseHelper.columnLongitude] as num?)?.toDouble();
       final ket = item[DatabaseHelper.columnKeterangan] as String?;
 
-      final success = await submitAbsensiToApi(
+      final result = await submitAbsensiToApi(
         tipe: tipe,
         tanggal: tanggal,
         waktu: waktu,
@@ -227,8 +277,8 @@ class AppApiService {
         isFromSync: true,
       );
 
-      if (success) {
-        await DatabaseHelper.instance.markAsSynced(id);
+      if (result.success) {
+        await DatabaseHelper.instance.markAsSynced(id, apiId: result.apiId);
         syncedCount++;
       }
     }
@@ -253,16 +303,16 @@ class AppApiService {
     bool profileSynced = false;
 
     try {
-      // 1. Kirim semua absensi lokal yang berstatus pending (0) ke API
+      // 1. Kirim semua absensi lokal yang berstatus pending (0) ke API server
       pendingSynced = await syncAllPendingToApi();
 
-      // 2. Sinkronkan profil user dari server API
+      // 2. Sinkronkan data profil pengguna terbaru dari server API
       try {
         final profileData = await getProfileFromApi();
         profileSynced = profileData != null;
       } catch (_) {}
 
-      // 3. Tarik riwayat absensi dari API dan simpan ke SQLite jika belum ada
+      // 3. Tarik riwayat absensi dari API server dan sinkronkan ke SQLite lokal
       final apiHistory = await fetchHistoryFromApi();
       if (apiHistory != null && apiHistory.isNotEmpty) {
         final userId = await PrefHelper.getUserId();
@@ -273,7 +323,7 @@ class AppApiService {
           final apiId = item['id']?.toString();
           final createdAt = item['created_at']?.toString() ?? item['check_in']?.toString() ?? '';
 
-          // Jika record dibuat sebelum waktu "Hapus Semua", hapus di server & skip
+          // Jika record dibuat sebelum waktu "Hapus Semua", hapus di server & lewati
           if (lastClearedAt != null && createdAt.isNotEmpty) {
             try {
               final itemTime = DateTime.parse(createdAt);
@@ -287,29 +337,28 @@ class AppApiService {
             } catch (_) {}
           }
 
-          final checkInStr = item['check_in']?.toString() ?? '';
-          final checkOutStr = item['check_out']?.toString() ?? '';
+          final checkInStr = item['check_in']?.toString() ?? item['check_in_time']?.toString() ?? '';
+          final checkOutStr = item['check_out']?.toString() ?? item['check_out_time']?.toString() ?? '';
 
           final now = DateTime.now();
           final defaultDate =
               '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-          // A. SINKRONKAN ABSEN MASUK
+          // A. SINKRONKAN ABSEN MASUK DARI API KE SQLITE
           if (checkInStr.isNotEmpty && checkInStr != 'null') {
             final tanggalMasuk = checkInStr.contains(' ')
                 ? checkInStr.split(' ').first
-                : (item['date'] ?? defaultDate).toString();
+                : (item['date'] ?? item['tanggal'] ?? defaultDate).toString();
             final waktuMasuk = checkInStr.contains(' ')
                 ? checkInStr.split(' ')[1]
-                : (item['time'] ?? '08:00:00').toString();
+                : (item['time'] ?? item['waktu'] ?? checkInStr).toString();
             final ketMasuk = (item['check_in_address'] ??
                     item['keterangan'] ??
+                    item['address'] ??
                     'Absen Masuk dari API Server')
                 .toString();
-            final latMasuk =
-                (item['check_in_lat'] ?? item['latitude'] as num?)?.toDouble() ?? -6.200000;
-            final lonMasuk =
-                (item['check_in_lng'] ?? item['longitude'] as num?)?.toDouble() ?? 106.816666;
+            final latMasuk = (item['check_in_lat'] ?? item['latitude'] as num?)?.toDouble() ?? -6.200000;
+            final lonMasuk = (item['check_in_lng'] ?? item['longitude'] as num?)?.toDouble() ?? 106.816666;
 
             final isMasukDeleted = await DatabaseHelper.instance.isAbsensiDeleted(
               apiId: apiId,
@@ -339,26 +388,36 @@ class AppApiService {
                   DatabaseHelper.columnStatusSync: 1,
                 });
                 apiItemsSynced++;
+              } else {
+                final existingId = existsMasuk[DatabaseHelper.columnId] as int;
+                final curSync = existsMasuk[DatabaseHelper.columnStatusSync] as int? ?? 0;
+                final curApiId = existsMasuk[DatabaseHelper.columnApiId]?.toString();
+                if (curSync != 1 || curApiId == null || curApiId.isEmpty) {
+                  await DatabaseHelper.instance.updateAbsensi(existingId, {
+                    DatabaseHelper.columnApiId: apiId,
+                    DatabaseHelper.columnStatusSync: 1,
+                  });
+                  apiItemsSynced++;
+                }
               }
             }
           }
 
-          // B. SINKRONKAN ABSEN KELUAR (CHECK-OUT)
+          // B. SINKRONKAN ABSEN KELUAR (CHECK-OUT) DARI API KE SQLITE
           if (checkOutStr.isNotEmpty && checkOutStr != 'null') {
             final tanggalKeluar = checkOutStr.contains(' ')
                 ? checkOutStr.split(' ').first
-                : (item['date'] ?? defaultDate).toString();
+                : (item['date'] ?? item['tanggal'] ?? defaultDate).toString();
             final waktuKeluar = checkOutStr.contains(' ')
                 ? checkOutStr.split(' ')[1]
-                : (item['time'] ?? '17:00:00').toString();
+                : (item['time'] ?? item['waktu'] ?? checkOutStr).toString();
             final ketKeluar = (item['check_out_address'] ??
                     item['keterangan'] ??
+                    item['address'] ??
                     'Absen Keluar dari API Server')
                 .toString();
-            final latKeluar =
-                (item['check_out_lat'] ?? item['latitude'] as num?)?.toDouble() ?? -6.200000;
-            final lonKeluar =
-                (item['check_out_lng'] ?? item['longitude'] as num?)?.toDouble() ?? 106.816666;
+            final latKeluar = (item['check_out_lat'] ?? item['latitude'] as num?)?.toDouble() ?? -6.200000;
+            final lonKeluar = (item['check_out_lng'] ?? item['longitude'] as num?)?.toDouble() ?? 106.816666;
 
             final isKeluarDeleted = await DatabaseHelper.instance.isAbsensiDeleted(
               apiId: apiId,
@@ -388,6 +447,71 @@ class AppApiService {
                   DatabaseHelper.columnStatusSync: 1,
                 });
                 apiItemsSynced++;
+              } else {
+                final existingId = existsKeluar[DatabaseHelper.columnId] as int;
+                final curSync = existsKeluar[DatabaseHelper.columnStatusSync] as int? ?? 0;
+                final curApiId = existsKeluar[DatabaseHelper.columnApiId]?.toString();
+                if (curSync != 1 || curApiId == null || curApiId.isEmpty) {
+                  await DatabaseHelper.instance.updateAbsensi(existingId, {
+                    DatabaseHelper.columnApiId: apiId,
+                    DatabaseHelper.columnStatusSync: 1,
+                  });
+                  apiItemsSynced++;
+                }
+              }
+            }
+          }
+
+          // C. SINKRONKAN JIKA FORMAT ITEM ADALAH SINGLE TRANSACTION (tipe: Masuk / Keluar)
+          final itemTipe = (item['tipe'] ?? item['type'] ?? '').toString().toLowerCase().trim();
+          if (itemTipe.isNotEmpty && checkInStr.isEmpty && checkOutStr.isEmpty) {
+            final isItemMasuk = itemTipe == 'masuk' || itemTipe.contains('in');
+            final normalizedTipe = isItemMasuk ? 'Masuk' : 'Keluar';
+            final tgl = (item['tanggal'] ?? item['date'] ?? (item['created_at']?.toString().split(' ').first ?? defaultDate)).toString();
+            final wkt = (item['waktu'] ?? item['time'] ?? (item['created_at']?.toString().contains(' ') == true ? item['created_at'].toString().split(' ')[1] : '08:00:00')).toString();
+            final ket = (item['keterangan'] ?? item['address'] ?? 'Absen $normalizedTipe dari Server').toString();
+            final lat = (item['latitude'] ?? item['lat'] as num?)?.toDouble() ?? -6.200000;
+            final lon = (item['longitude'] ?? item['lng'] as num?)?.toDouble() ?? 106.816666;
+
+            final isDeleted = await DatabaseHelper.instance.isAbsensiDeleted(
+              apiId: apiId,
+              tanggal: tgl,
+              tipe: normalizedTipe,
+              userId: userId,
+            );
+
+            if (!isDeleted) {
+              final exists = await DatabaseHelper.instance.getAbsensiHariIni(
+                tanggal: tgl,
+                tipe: normalizedTipe,
+                userId: userId,
+              );
+
+              if (exists == null) {
+                await DatabaseHelper.instance.insertAbsensi({
+                  DatabaseHelper.columnApiId: apiId,
+                  DatabaseHelper.columnUserId: userId,
+                  DatabaseHelper.columnNama: userName,
+                  DatabaseHelper.columnTanggal: tgl,
+                  DatabaseHelper.columnWaktu: wkt,
+                  DatabaseHelper.columnTipe: normalizedTipe,
+                  DatabaseHelper.columnKeterangan: ket,
+                  DatabaseHelper.columnLatitude: lat,
+                  DatabaseHelper.columnLongitude: lon,
+                  DatabaseHelper.columnStatusSync: 1,
+                });
+                apiItemsSynced++;
+              } else {
+                final existingId = exists[DatabaseHelper.columnId] as int;
+                final curSync = exists[DatabaseHelper.columnStatusSync] as int? ?? 0;
+                final curApiId = exists[DatabaseHelper.columnApiId]?.toString();
+                if (curSync != 1 || curApiId == null || curApiId.isEmpty) {
+                  await DatabaseHelper.instance.updateAbsensi(existingId, {
+                    DatabaseHelper.columnApiId: apiId,
+                    DatabaseHelper.columnStatusSync: 1,
+                  });
+                  apiItemsSynced++;
+                }
               }
             }
           }
@@ -404,4 +528,4 @@ class AppApiService {
       'profileSynced': profileSynced,
     };
   }
-}
+}

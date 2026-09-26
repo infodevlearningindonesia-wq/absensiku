@@ -555,8 +555,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // 1. Coba hubungkan dan kirim ke API Server Backend
     bool apiSuccess = false;
+    String? apiId;
     try {
-      apiSuccess = await AppApiService.submitAbsensiToApi(
+      final res = await AppApiService.submitAbsensiToApi(
         tipe: tipe,
         tanggal: tanggal,
         waktu: waktu,
@@ -564,12 +565,15 @@ class _HomeScreenState extends State<HomeScreen> {
         longitude: lon,
         keterangan: ket,
       );
+      apiSuccess = res.success;
+      apiId = res.apiId;
     } catch (_) {
       apiSuccess = false;
     }
 
-    // 2. Simpan ke database lokal SQLite
+    // 2. Simpan ke database lokal SQLite (menyimpan api_id jika berhasil tersambung)
     final id = await DatabaseHelper.instance.insertAbsensi({
+      DatabaseHelper.columnApiId: apiId,
       DatabaseHelper.columnUserId: _userId,
       DatabaseHelper.columnNama: _userName,
       DatabaseHelper.columnTanggal: tanggal,
@@ -583,48 +587,51 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (!mounted) return;
 
-    if (id > 0) {
+    // 3. Segera perbarui state lokal agar status tombol Absen Masuk / Keluar langsung ter-update
+    await _loadAbsensiFromDb();
+
+    // 4. Jalankan sinkronisasi background dua arah
+    _autoSyncAll();
+
+    // 5. Tampilkan alert dialog konfirmasi sukses
+    if (id > 0 && mounted) {
       final isMasuk = tipe.toLowerCase() == 'masuk';
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Icon(Icons.check_circle, color: isMasuk ? Colors.green : Colors.blue),
-                const SizedBox(width: 8),
-                Text('Presensi $tipe Berhasil'),
-              ],
-            ),
-            content: Text(
-              'Data absen $tipe berhasil disimpan.\n\n'
-              '• Waktu: $waktu WIB\n'
-              '• Tanggal: $tanggal\n'
-              '• Status: ${apiSuccess ? "Tersinkron ke Server API" : "Tersimpan di SQLite Lokal"}',
-            ),
-            actions: [
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('OK / Tutup'),
-                    ),
-                  ),
-                ],
-              ),
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.check_circle, color: isMasuk ? Colors.green : Colors.blue),
+              const SizedBox(width: 8),
+              Text('Presensi $tipe Berhasil'),
             ],
           ),
-        );
-      }
-      _loadAbsensiFromDb();
-      _autoSyncAll();
+          content: Text(
+            'Data absen $tipe berhasil disimpan.\n\n'
+            '• Waktu: $waktu WIB\n'
+            '• Tanggal: $tanggal\n'
+            '• Status: ${apiSuccess ? "Tersinkron ke Server API" : "Tersimpan di SQLite Lokal (Offline)"}',
+          ),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('OK / Tutup'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
     }
   }
 

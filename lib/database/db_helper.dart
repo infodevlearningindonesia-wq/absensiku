@@ -518,11 +518,15 @@ class DatabaseHelper {
   }
 
   // 9. UPDATE: Tandai riwayat absensi sudah berhasil disinkronkan ke API (status_sync = 1)
-  Future<int> markAsSynced(int id) async {
+  Future<int> markAsSynced(int id, {String? apiId}) async {
     final db = await database;
+    final Map<String, dynamic> row = {columnStatusSync: 1};
+    if (apiId != null && apiId.isNotEmpty) {
+      row[columnApiId] = apiId;
+    }
     return await db.update(
       tableAbsensi,
-      {columnStatusSync: 1},
+      row,
       where: '$columnId = ?',
       whereArgs: [id],
     );
