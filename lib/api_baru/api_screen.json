@@ -1,98 +1,154 @@
 {
-  "screen": "register_screen",
-  "title": "Daftar Akun Absensiku",
-  "api_endpoint": "http://localhost:8000/api/register",
-  "method": "POST",
-  "headers": {
-    "Content-Type": "application/json",
-    "Accept": "application/json"
-  },
-  "form_data": {
-    "name": "",
-    "email": "",
-    "password": "",
-    "password_confirmation": ""
-  },
-  "fields": [
-    {
-      "key": "name",
-      "label": "Nama Lengkap",
-      "type": "text",
-      "placeholder": "Masukkan nama lengkap Anda",
-      "required": true,
-      "icon": "person_outline",
-      "validation": {
-        "rule": "Nama lengkap wajib diisi"
+  "app_name": "Absensiku",
+  "base_url_local": "http://localhost:8000",
+  "base_url_emulator": "http://10.0.2.2:8000",
+  "base_url_production": "https://absensib1.mobileprojp.com",
+  "endpoints": {
+    "auth": [
+      {
+        "name": "Daftar Akun (Register)",
+        "screen": "RegisterScreen",
+        "method": "POST",
+        "path": "/api/register",
+        "url_local": "http://localhost:8000/api/register",
+        "url_production": "https://absensib1.mobileprojp.com/api/register",
+        "description": "Pendaftaran akun baru pengguna",
+        "requires_auth": false,
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "body": {
+          "name": "",
+          "email": "",
+          "password": "",
+          "password_confirmation": ""
+        }
+      },
+      {
+        "name": "Masuk Akun (Login)",
+        "screen": "LoginScreen",
+        "method": "POST",
+        "path": "/api/login",
+        "url_local": "http://localhost:8000/api/login",
+        "url_production": "https://absensib1.mobileprojp.com/api/login",
+        "description": "Login pengguna untuk mendapatkan Bearer Token",
+        "requires_auth": false,
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "body": {
+          "email": "",
+          "password": ""
+        }
+      },
+      {
+        "name": "Ambil Profil Pengguna",
+        "screen": "ProfileScreen",
+        "method": "GET",
+        "path": "/api/profile",
+        "url_local": "http://localhost:8000/api/profile",
+        "url_production": "https://absensib1.mobileprojp.com/api/profile",
+        "description": "Mengambil data profil pengguna yang sedang login",
+        "requires_auth": true,
+        "headers": {
+          "Authorization": "Bearer <token>",
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      {
+        "name": "Perbarui Profil Pengguna",
+        "screen": "ProfileScreen",
+        "method": "PUT",
+        "path": "/api/profile",
+        "url_local": "http://localhost:8000/api/profile",
+        "url_production": "https://absensib1.mobileprojp.com/api/profile",
+        "description": "Memperbarui nama dan email pengguna ke server API",
+        "requires_auth": true,
+        "headers": {
+          "Authorization": "Bearer <token>",
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "body": {
+          "name": "",
+          "email": ""
+        }
       }
-    },
-    {
-      "key": "email",
-      "label": "Email",
-      "type": "email",
-      "placeholder": "Masukkan email Anda",
-      "required": true,
-      "icon": "email_outlined",
-      "validation": {
-        "rule": "Email wajib diisi dan format email valid"
+    ],
+    "presensi": [
+      {
+        "name": "Absen Masuk (Check-In)",
+        "screen": "HomeScreen / MapsScreen",
+        "method": "POST",
+        "path": "/api/absen/check-in",
+        "url_local": "http://localhost:8000/api/absen/check-in",
+        "url_production": "https://absensib1.mobileprojp.com/api/absen/check-in",
+        "description": "Kirim absensi masuk beserta titik koordinat dan alamat",
+        "requires_auth": true,
+        "headers": {
+          "Authorization": "Bearer <token>",
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "body": {
+          "check_in_lat": -6.200000,
+          "check_in_lng": 106.816666,
+          "check_in_address": ""
+        }
+      },
+      {
+        "name": "Absen Keluar (Check-Out)",
+        "screen": "HomeScreen / MapsScreen",
+        "method": "POST",
+        "path": "/api/absen/check-out",
+        "url_local": "http://localhost:8000/api/absen/check-out",
+        "url_production": "https://absensib1.mobileprojp.com/api/absen/check-out",
+        "description": "Kirim absensi pulang/keluar beserta titik koordinat dan alamat",
+        "requires_auth": true,
+        "headers": {
+          "Authorization": "Bearer <token>",
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        "body": {
+          "check_out_lat": -6.200000,
+          "check_out_lng": 106.816666,
+          "check_out_address": ""
+        }
+      },
+      {
+        "name": "Riwayat Absensi",
+        "screen": "DaftarHadirScreen",
+        "method": "GET",
+        "path": "/api/absen/history",
+        "url_local": "http://localhost:8000/api/absen/history",
+        "url_production": "https://absensib1.mobileprojp.com/api/absen/history",
+        "description": "Mengambil seluruh riwayat data absensi pengguna",
+        "requires_auth": true,
+        "headers": {
+          "Authorization": "Bearer <token>",
+          "Accept": "application/json"
+        },
+        "body": null
+      },
+      {
+        "name": "Hapus Data Absensi",
+        "screen": "DaftarHadirScreen",
+        "method": "DELETE",
+        "path": "/api/absen/{id}",
+        "url_local": "http://localhost:8000/api/absen/{id}",
+        "url_production": "https://absensib1.mobileprojp.com/api/absen/{id}",
+        "description": "Menghapus data absensi spesifik berdasarkan ID absensi",
+        "requires_auth": true,
+        "headers": {
+          "Authorization": "Bearer <token>",
+          "Accept": "application/json"
+        },
+        "body": null
       }
-    },
-    {
-      "key": "password",
-      "label": "Password",
-      "type": "password",
-      "placeholder": "Minimal 8 karakter: huruf besar, kecil & angka",
-      "required": true,
-      "icon": "lock_outline",
-      "validation": {
-        "min_length": 8,
-        "requires_uppercase": true,
-        "requires_lowercase": true,
-        "requires_number_or_symbol": true,
-        "rule": "Password minimal 8 karakter, wajib kombinasi huruf besar, kecil, dan angka/simbol (contoh: Rahasia123)"
-      }
-    },
-    {
-      "key": "password_confirmation",
-      "label": "Konfirmasi Password",
-      "type": "password",
-      "placeholder": "Ulangi password Anda",
-      "required": true,
-      "icon": "lock_reset_outlined",
-      "validation": {
-        "match_field": "password",
-        "rule": "Konfirmasi password harus cocok dengan password"
-      }
-    }
-  ],
-  "sample_request_payload": {
-    "name": "Ahmad Fauzi",
-    "email": "ahmad.fauzi@example.com",
-    "password": "Password123!",
-    "password_confirmation": "Password123!"
-  },
-  "sample_response_success": {
-    "message": "User registered successfully",
-    "data": {
-      "token": "1|laravel_sanctum_token_absensiku_sample1234567890",
-      "user": {
-        "id": 1,
-        "name": "Ahmad Fauzi",
-        "email": "ahmad.fauzi@example.com",
-        "email_verified_at": null,
-        "created_at": "2026-09-26T10:30:00.000000Z",
-        "updated_at": "2026-09-26T10:30:00.000000Z"
-      }
-    }
-  },
-  "sample_response_error": {
-    "message": "The given data was invalid.",
-    "errors": {
-      "email": [
-        "Email sudah terdaftar di server."
-      ],
-      "password": [
-        "Password minimal 8 karakter dan mengandung huruf besar, huruf kecil, dan angka."
-      ]
-    }
+    ]
   }
 }
