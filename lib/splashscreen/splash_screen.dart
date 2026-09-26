@@ -10,15 +10,14 @@ class SplashScreen extends StatefulWidget {
 class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            
-            SizedBox(height: 16), 
-            Text(
+            const SizedBox(height: 16),
+            const Text(
               'Absensiku',
               style: TextStyle(
                 fontSize: 32,
@@ -26,14 +25,13 @@ class _SplashScreenState extends State<SplashScreen> {
                 color: Colors.blueAccent,
               ),
             ),
-            Image.asset('assets/images/logo.png'),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             CircularProgressIndicator(
-               color: Colors.blueAccent,
+              color: Colors.blueAccent,
             ),
-            ],
+          ],
         ),
       ),
-      );
+    );
   }
 }
