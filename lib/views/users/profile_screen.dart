@@ -613,24 +613,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       );
 
                                       // 2. Simpan ke SQLite Database
-                                      if (_userId != null) {
-                                        await DatabaseHelper.instance.updateUser(
-                                          id: _userId!,
-                                          nama: newName,
-                                          email: newEmail,
-                                          phone: newPhone,
-                                          alamat: newAlamat,
-                                          foto: _userPhotoPath,
-                                        );
+                                      try {
+                                        if (_userId != null) {
+                                          await DatabaseHelper.instance.updateUser(
+                                            id: _userId!,
+                                            nama: newName,
+                                            email: newEmail,
+                                            phone: newPhone,
+                                            alamat: newAlamat,
+                                            foto: _userPhotoPath,
+                                          );
+                                        } else {
+                                          await DatabaseHelper.instance.updateUserByEmail(
+                                            oldEmail: _userEmail,
+                                            nama: newName,
+                                            newEmail: newEmail,
+                                            phone: newPhone,
+                                            alamat: newAlamat,
+                                            foto: _userPhotoPath,
+                                          );
+                                        }
+                                      } catch (dbError) {
+                                        debugPrint('Error updating SQLite user profile: $dbError');
                                       }
-                                      await DatabaseHelper.instance.updateUserByEmail(
-                                        oldEmail: _userEmail,
-                                        nama: newName,
-                                        newEmail: newEmail,
-                                        phone: newPhone,
-                                        alamat: newAlamat,
-                                        foto: _userPhotoPath,
-                                      );
 
                                       // 3. Otomatis sinkronkan perubahan profil ke API Server (PUT /api/profile)
                                       bool apiSyncSuccess = false;

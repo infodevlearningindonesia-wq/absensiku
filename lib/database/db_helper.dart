@@ -247,18 +247,41 @@ class DatabaseHelper {
     String? foto,
   }) async {
     final db = await database;
+    final cleanEmail = email.toLowerCase().trim();
+
+    // Hapus akun lain yang memakai email yang sama agar tidak melanggar UNIQUE constraint
+    try {
+      await db.delete(
+        tableUsers,
+        where: 'LOWER($colUserEmail) = ? AND $colUserId != ?',
+        whereArgs: [cleanEmail, id],
+      );
+    } catch (_) {}
+
     final Map<String, dynamic> data = {
       colUserNama: nama.trim(),
-      colUserEmail: email.toLowerCase().trim(),
+      colUserEmail: cleanEmail,
     };
     if (phone != null) data[colUserPhone] = phone.trim();
     if (alamat != null) data[colUserAlamat] = alamat.trim();
     if (foto != null) data[colUserFoto] = foto.trim();
+
+    // Perbarui juga nama pada tabel absensi milik user ini
+    try {
+      await db.update(
+        tableAbsensi,
+        {columnNama: nama.trim()},
+        where: '$columnUserId = ?',
+        whereArgs: [id],
+      );
+    } catch (_) {}
+
     return await db.update(
       tableUsers,
       data,
       where: '$colUserId = ?',
       whereArgs: [id],
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
@@ -272,18 +295,34 @@ class DatabaseHelper {
     String? foto,
   }) async {
     final db = await database;
+    final cleanOldEmail = oldEmail.toLowerCase().trim();
+    final cleanNewEmail = newEmail.toLowerCase().trim();
+
+    // Hapus akun lain yang memakai newEmail jika bukan akun dengan oldEmail ini
+    if (cleanOldEmail != cleanNewEmail) {
+      try {
+        await db.delete(
+          tableUsers,
+          where: 'LOWER($colUserEmail) = ? AND LOWER($colUserEmail) != ?',
+          whereArgs: [cleanNewEmail, cleanOldEmail],
+        );
+      } catch (_) {}
+    }
+
     final Map<String, dynamic> data = {
       colUserNama: nama.trim(),
-      colUserEmail: newEmail.toLowerCase().trim(),
+      colUserEmail: cleanNewEmail,
     };
     if (phone != null) data[colUserPhone] = phone.trim();
     if (alamat != null) data[colUserAlamat] = alamat.trim();
     if (foto != null) data[colUserFoto] = foto.trim();
+
     return await db.update(
       tableUsers,
       data,
       where: 'LOWER($colUserEmail) = ?',
-      whereArgs: [oldEmail.toLowerCase().trim()],
+      whereArgs: [cleanOldEmail],
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
