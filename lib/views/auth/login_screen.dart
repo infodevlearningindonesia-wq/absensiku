@@ -5,7 +5,9 @@ import 'package:absensiku/services/pref_helper.dart';
 import 'package:absensiku/models/login_models.dart';
 import 'package:absensiku/services/api_services.dart';
 import 'package:absensiku/services/dio_system.dart';
+import 'package:absensiku/services/network_helper.dart';
 import 'package:absensiku/views/auth/register_screen.dart';
+import 'package:absensiku/views/auth/reset_password.dart';
 import 'package:absensiku/views/users/home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -40,11 +42,20 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
+    // 1. Periksa koneksi internet (Wajib online)
+    final hasInternet = await NetworkHelper.hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) setState(() => _isLoading = false);
+      if (!mounted) return;
+      NetworkHelper.showOfflineDialog(context, featureName: 'Fitur Login');
+      return;
+    }
+
     final email = _emailController.text.trim().toLowerCase();
     final password = _passwordController.text;
 
     try {
-      // 1. JALUR UTAMA: Panggil API Login ke Server Backend
+      // 2. Panggil API Login ke Server Backend
       final dio = createDioClient();
       final apiService = ApiService(dio);
 
@@ -67,7 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
           email: user?.email ?? email,
         );
 
-        // Sinkronkan ke tabel users SQLite lokal agar dapat login offline
+        // Sinkronkan ke tabel users SQLite lokal
         final isRegisteredLocally = await DatabaseHelper.instance.isEmailRegistered(email);
         if (!isRegisteredLocally) {
           await DatabaseHelper.instance.registerUser(
@@ -109,58 +120,9 @@ class _LoginScreenState extends State<LoginScreen> {
         (route) => false,
       );
     } on DioException catch (e) {
-      // 2. JALUR CADANGAN: Cek ke Tabel Users SQLite jika server gagal / offline
-      final localUser = await DatabaseHelper.instance.loginUser(
-        email: email,
-        password: password,
-      );
-
-      if (localUser != null) {
-        final userId = localUser[DatabaseHelper.colUserId] as int?;
-        final userName = localUser[DatabaseHelper.colUserNama] as String? ?? 'Pengguna';
-        final userEmail = localUser[DatabaseHelper.colUserEmail] as String? ?? email;
-
-        // Simpan Session ke SharedPreferences
-        await PrefHelper.saveSession(
-          token: 'local_token_$userId',
-          userId: userId,
-          name: userName,
-          email: userEmail,
-        );
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('Login berhasil! Selamat datang $userName.'),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-          (route) => false,
-        );
-        return;
-      }
-
       String errorMessage = 'Email atau password salah.';
-      
-      // Periksa apakah email ada di SQLite lokal tapi password salah
-      final isLocalEmail = await DatabaseHelper.instance.isEmailRegistered(email);
-      if (isLocalEmail) {
-        errorMessage = 'Password salah untuk akun $email.';
-      } else if (e.response != null && e.response?.data is Map) {
+
+      if (e.response != null && e.response?.data is Map) {
         final data = e.response?.data as Map;
         if (data['message'] != null) {
           errorMessage = data['message'];
@@ -384,7 +346,19 @@ class _LoginScreenState extends State<LoginScreen> {
                         },
                         child: const Text('Daftar Sekarang'),
                       ),
-                    ],
+                      const SizedBox(width: 24),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ResetPasswordScreen(),
+                            ),
+                          );
+                        },
+                        child: const Text('Lupa Password?'),
+                      ),
+                    ],  
                   ),
                 ],
               ),

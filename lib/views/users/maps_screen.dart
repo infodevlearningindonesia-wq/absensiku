@@ -1,9 +1,9 @@
 import 'dart:developer';
-
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:absensiku/services/network_helper.dart';
 // COMENT YANG LAUNCHER
 // import 'package:url_launcher/url_launcher.dart';
 
@@ -31,6 +31,10 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
   // Menyimpan teks alamat lengkap hasil konversi dari koordinat
   String _currentAddress = "Mencari Lokasi...";
 
+  // Status koneksi internet
+  bool _isOnline = true;
+  bool _isCheckingConnection = false;
+
   // Lokasi default (misal: Indramayu/Jakarta) jika lokasi perangkat belum didapatkan
   final LatLng _defaultLocation = const LatLng(-6.2000, 108.8166666);
 
@@ -49,6 +53,27 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
 
   /// Memeriksa status GPS/Layanan Lokasi serta meminta izin akses lokasi ke pengguna
   Future<void> _checkPermissionsAndGetLocation() async {
+    setState(() {
+      _isCheckingConnection = true;
+    });
+
+    final online = await NetworkHelper.hasInternetConnection();
+    if (!mounted) return;
+    if (!online) {
+      setState(() {
+        _isOnline = false;
+        _isCheckingConnection = false;
+        _currentAddress = "Anda sedang offline. Peta Google Maps dan geolokasi membutuhkan koneksi internet aktif.";
+      });
+      NetworkHelper.showOfflineDialog(context, featureName: 'Peta Lokasi Google Maps');
+      return;
+    }
+
+    setState(() {
+      _isOnline = true;
+      _isCheckingConnection = false;
+    });
+
     bool serviceEnabled;
     LocationPermission permission;
 
@@ -188,25 +213,83 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Peta Lokasi Presensi')),
-      body: Stack(
-        children: [
-          // Widget utama Peta Google Maps Asli
-          GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: _currentPosition != null
-                  ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-                  : _defaultLocation,
-              zoom: 15.0,
-            ),
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-            },
-            markers: _markers,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: true,
-            mapToolbarEnabled: false,
-          ),
+      body: !_isOnline
+          ? Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.cloud_off_rounded,
+                        size: 72,
+                        color: Colors.red.shade400,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Peta Tidak Tersedia Saat Offline',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade800,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Fitur Google Maps dan pelacakan GPS akurat membutuhkan sambungan internet aktif seperti aplikasi online lainnya.',
+                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.4),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      onPressed: _isCheckingConnection ? null : _checkPermissionsAndGetLocation,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      icon: _isCheckingConnection
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.refresh),
+                      label: Text(_isCheckingConnection ? 'Memeriksa...' : 'Coba Lagi'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Stack(
+              children: [
+                // Widget utama Peta Google Maps Asli
+                GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: _currentPosition != null
+                        ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+                        : _defaultLocation,
+                    zoom: 15.0,
+                  ),
+                  onMapCreated: (GoogleMapController controller) {
+                    _mapController = controller;
+                  },
+                  markers: _markers,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: true,
+                  mapToolbarEnabled: false,
+                ),
 
           // Card melayang di bagian bawah untuk menampilkan informasi alamat (aman dari overflow & overlap)
           Positioned(
@@ -226,11 +309,13 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          "Alamat Anda Saat Ini:",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
+                        const Expanded(
+                          child: Text(
+                            "Alamat Anda Saat Ini:",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                         ),
                         IconButton(

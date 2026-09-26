@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 import 'package:absensiku/models/auth_response.dart';
@@ -148,10 +149,19 @@ class AppApiService {
     final isMasuk = cleanTipe == 'masuk' || cleanTipe.contains('in');
     final endpoint = isMasuk ? '/api/absen/check-in' : '/api/absen/check-out';
 
-    // Jika ini Absen Keluar dan bukan dari proses sync, pastikan absen masuk yang pending telah terkirim ke server terlebih dahulu
+    // Jika Absen Keluar, hanya sinkronkan data masuk hari ini jika masih berstatus pending (0)
     if (!isMasuk && !isFromSync) {
       try {
-        await syncAllPendingToApi();
+        final unsynced = await DatabaseHelper.instance.getUnsyncedAbsensi();
+        final hasPendingMasukToday = unsynced.any((item) {
+          final itemTipe = item[DatabaseHelper.columnTipe]?.toString().toLowerCase() ?? '';
+          final itemTgl = item[DatabaseHelper.columnTanggal]?.toString() ?? '';
+          return (itemTipe.contains('masuk') || itemTipe.contains('in')) && itemTgl == tanggal;
+        });
+
+        if (hasPendingMasukToday) {
+          await syncAllPendingToApi();
+        }
       } catch (_) {}
     }
 
@@ -362,6 +372,19 @@ class AppApiService {
           final serverEmail = data['email'] as String?;
           final id = data['id'] as int?;
 
+          // Ambil URL Foto dari server jika tersedia (photo / avatar / foto / image)
+          final serverPhoto = data['photo'] ??
+              data['foto'] ??
+              data['avatar'] ??
+              data['profile_photo_url'] ??
+              data['image'];
+          if (serverPhoto is String && serverPhoto.isNotEmpty) {
+            final localPhoto = await PrefHelper.getUserPhoto();
+            if (localPhoto == null || localPhoto.isEmpty || localPhoto.startsWith('http')) {
+              await PrefHelper.setUserPhoto(serverPhoto);
+            }
+          }
+
           // Pertahankan email lokal yang sudah diperbarui agar tidak tertimpa email lama server
           final localEmail = await PrefHelper.getUserEmail();
           final effectiveEmail = (localEmail != null && localEmail.isNotEmpty)
@@ -385,10 +408,11 @@ class AppApiService {
     }
   }
 
-  // 5. Perbarui data profil pengguna ke Server API (PUT /api/profile)
+  // 5. Perbarui data profil pengguna dan foto ke Server API (PUT / POST Multipart /api/profile)
   static Future<UpdateProfileResult> updateProfileToApi({
     required String name,
     required String email,
+    String? photoPath,
   }) async {
     final token = await ensureValidApiToken();
     if (token == null || token.isEmpty) {
@@ -401,20 +425,71 @@ class AppApiService {
 
     try {
       final dio = createDioClient();
-      final response = await dio.put(
-        '/api/profile',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $token',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-        ),
-        data: {
+      Response response;
+
+      final hasLocalFile = photoPath != null &&
+          photoPath.isNotEmpty &&
+          !photoPath.startsWith('http') &&
+          File(photoPath).existsSync();
+
+      if (hasLocalFile) {
+        final fileName = photoPath.split(Platform.pathSeparator).last;
+        final fileBytes = await File(photoPath).readAsBytes();
+        final formData = FormData.fromMap({
           'name': name.trim(),
           'email': email.trim(),
-        },
-      );
+          '_method': 'PUT',
+          'photo': MultipartFile.fromBytes(fileBytes, filename: fileName),
+          'foto': MultipartFile.fromBytes(fileBytes, filename: fileName),
+          'avatar': MultipartFile.fromBytes(fileBytes, filename: fileName),
+          'image': MultipartFile.fromBytes(fileBytes, filename: fileName),
+        });
+
+        // Kirim POST dengan _method: PUT (standar Laravel/REST Multipart)
+        try {
+          response = await dio.post(
+            '/api/profile',
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Accept': 'application/json',
+              },
+            ),
+            data: formData,
+          );
+        } catch (_) {
+          // Fallback coba PUT langsung dengan JSON jika backend hanya menerima JSON
+          response = await dio.put(
+            '/api/profile',
+            options: Options(
+              headers: {
+                'Authorization': 'Bearer $token',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+              },
+            ),
+            data: {
+              'name': name.trim(),
+              'email': email.trim(),
+            },
+          );
+        }
+      } else {
+        response = await dio.put(
+          '/api/profile',
+          options: Options(
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          ),
+          data: {
+            'name': name.trim(),
+            'email': email.trim(),
+          },
+        );
+      }
 
       final isSuccess = response.statusCode == 200 || response.statusCode == 201;
       Map<String, dynamic>? resData;
@@ -442,6 +517,16 @@ class AppApiService {
           name: confirmedName,
           email: targetEmail,
         );
+
+        // Jika API mengembalikan URL foto profil baru, simpan ke PrefHelper
+        final returnedPhoto = resData?['photo'] ??
+            resData?['foto'] ??
+            resData?['avatar'] ??
+            resData?['profile_photo_url'] ??
+            resData?['image'];
+        if (returnedPhoto is String && returnedPhoto.isNotEmpty) {
+          await PrefHelper.setUserPhoto(returnedPhoto);
+        }
 
         return UpdateProfileResult(
           success: true,
@@ -500,6 +585,35 @@ class AppApiService {
       }
       return UpdateProfileResult(success: false, message: e.toString());
     }
+  }
+
+  // 5a. Upload Foto Profil Pengguna secara khusus ke API Server
+  static Future<UpdateProfileResult> uploadProfilePhotoToApi(String photoPath) async {
+    final token = await ensureValidApiToken();
+    if (token == null || token.isEmpty) {
+      return UpdateProfileResult(
+        success: false,
+        message: 'Akun belum terhubung ke API (Sesi Offline). Foto disimpan di perangkat lokal.',
+        isAuthError: true,
+      );
+    }
+
+    final file = File(photoPath);
+    if (!file.existsSync()) {
+      return UpdateProfileResult(
+        success: false,
+        message: 'File foto tidak ditemukan di perangkat.',
+      );
+    }
+
+    final name = await PrefHelper.getUserName();
+    final email = (await PrefHelper.getUserEmail()) ?? '';
+
+    return await updateProfileToApi(
+      name: name,
+      email: email,
+      photoPath: photoPath,
+    );
   }
 
   // 5b. Perbarui data absensi di Server API (Replace strategy: Delete old + Create new jika sudah ada api_id)
@@ -785,7 +899,17 @@ class AppApiService {
           }
 
           // B. SINKRONKAN ABSEN KELUAR (CHECK-OUT) DARI API KE SQLITE
-          if (checkOutStr.isNotEmpty && checkOutStr != 'null') {
+          final isCheckOutValid = checkOutStr.isNotEmpty &&
+              checkOutStr != 'null' &&
+              checkOutStr != '00:00:00' &&
+              checkOutStr != '00:00' &&
+              checkOutStr != '-' &&
+              checkOutStr != '--:--:--' &&
+              checkOutStr != '--:--' &&
+              checkOutStr != '0000-00-00 00:00:00' &&
+              !checkOutStr.startsWith('00:00:00');
+
+          if (isCheckOutValid) {
             DateTime? parsedCheckOut;
             try {
               parsedCheckOut = DateTime.tryParse(checkOutStr.replaceFirst(' ', 'T'));
@@ -812,6 +936,13 @@ class AppApiService {
                       ? checkOutStr.split('T')[1].split('.').first
                       : (item['time'] ?? item['waktu'] ?? checkOutStr).toString());
             }
+
+            // Abaikan jika waktu keluar tidak valid (contoh: 00:00:00 atau strip)
+            if (waktuKeluar.isNotEmpty &&
+                waktuKeluar != '00:00:00' &&
+                waktuKeluar != '00:00' &&
+                waktuKeluar != '-' &&
+                waktuKeluar != '--:--:--') {
 
             final ketKeluar = (item['check_out_address'] ??
                     item['keterangan'] ??
@@ -874,6 +1005,7 @@ class AppApiService {
               }
             }
           }
+        }
 
           // C. SINKRONKAN JIKA FORMAT ITEM ADALAH SINGLE TRANSACTION (tipe: Masuk / Keluar)
           final itemTipe = (item['tipe'] ?? item['type'] ?? '').toString().toLowerCase().trim();
@@ -948,5 +1080,36 @@ class AppApiService {
       'apiItemsSynced': apiItemsSynced,
       'profileSynced': profileSynced,
     };
+  }
+
+  // Reset password pengguna (SQLite lokal & API server)
+  static Future<bool> resetPassword(String email, String newPassword) async {
+    final cleanEmail = email.trim().toLowerCase();
+    
+    // 1. Coba update ke server API jika didukung
+    try {
+      final dio = createDioClient();
+      await dio.post(
+        '/api/reset-password',
+        data: {
+          'email': cleanEmail,
+          'password': newPassword,
+          'password_confirmation': newPassword,
+        },
+      );
+    } catch (_) {}
+
+    // 2. Simpan perubahan password ke database SQLite lokal
+    final isRegistered = await DatabaseHelper.instance.isEmailRegistered(cleanEmail);
+    if (!isRegistered) {
+      throw Exception('Email $cleanEmail tidak ditemukan di database.');
+    }
+
+    final updatedRows = await DatabaseHelper.instance.updateUserPassword(
+      email: cleanEmail,
+      newPassword: newPassword,
+    );
+
+    return updatedRows > 0;
   }
 }

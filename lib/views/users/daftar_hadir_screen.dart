@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:absensiku/database/db_helper.dart';
 import 'package:absensiku/services/api_services.dart';
+import 'package:absensiku/services/network_helper.dart';
 import 'package:absensiku/services/pref_helper.dart';
 import 'package:absensiku/views/users/maps_screen.dart';
 
@@ -63,186 +64,6 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
         });
       }
     } catch (_) {}
-  }
-
-  // Sinkronisasi data kehadiran lokal yang belum tersinkron ke API server dengan Alert Dialog
-  Future<void> _syncToApi() async {
-    final unsynced = await DatabaseHelper.instance.getUnsyncedAbsensi();
-    if (!mounted) return;
-
-    if (unsynced.isEmpty) {
-      // Sinkronkan dua arah di background untuk memastikan tidak ada data baru dari server yang tertinggal
-      AppApiService.autoSyncAllData().then((_) {
-        if (mounted) _loadDaftarHadir();
-      });
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green),
-              SizedBox(width: 8),
-              Text('Sinkronisasi Selesai'),
-            ],
-          ),
-          content: const Text('Semua catatan absensi sudah berhasil tersinkron.'),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Tutup'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Menyinkronkan ${unsynced.length} data kehadiran ke API server...'),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-
-    final syncResult = await AppApiService.syncAllPendingToApi();
-    // Sinkronisasi dua arah untuk memperbarui riwayat
-    await AppApiService.autoSyncAllData();
-    await _loadDaftarHadir();
-    if (!mounted) return;
-
-    if (syncResult.syncedCount > 0 && syncResult.failedCount == 0) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.cloud_done, color: Colors.green),
-              SizedBox(width: 8),
-              Text('Hasil Sinkronisasi'),
-            ],
-          ),
-          content: Text('${syncResult.syncedCount} data kehadiran berhasil disinkronkan ke API!'),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Tutup'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    } else if (syncResult.syncedCount > 0 && syncResult.failedCount > 0) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.orange),
-              SizedBox(width: 8),
-              Text('Sinkronisasi Sebagian'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('• Berhasil: ${syncResult.syncedCount} data kehadiran'),
-                Text('• Tertunda: ${syncResult.failedCount} data kehadiran'),
-                const SizedBox(height: 12),
-                const Text('Catatan Kendala:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(
-                  syncResult.errors.join('\n'),
-                  style: const TextStyle(fontSize: 12, color: Colors.black87),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Tutup'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    } else {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.redAccent),
-              SizedBox(width: 8),
-              Text('Sinkronisasi Tertunda'),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Sebanyak ${syncResult.totalPending} data absensi belum berhasil dikirim ke API server.',
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 12),
-                const Text('Penyebab / Kendala:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(
-                  syncResult.errors.isNotEmpty ? syncResult.errors.join('\n') : syncResult.message,
-                  style: const TextStyle(fontSize: 12, color: Colors.red),
-                ),
-                const SizedBox(height: 12),
-                const Text('Petunjuk Solusi:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(
-                  syncResult.isAuthError
-                      ? 'Sesi token API offline atau telah berakhir. Silakan login kembali dengan koneksi internet aktif agar sesi terhubung ke server.'
-                      : 'Pastikan koneksi internet ponsel stabil dan server API sedang aktif.',
-                  style: const TextStyle(fontSize: 12, color: Colors.black87),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Tutup'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    }
-    _loadDaftarHadir();
   }
 
   void _applyFilter() {
@@ -375,7 +196,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
                   onPressed: () {
                     Navigator.pop(ctx);
-                    _hapusItem(id);
+                    _hapusItem(id, item: item);
                   },
                   icon: const Icon(Icons.delete_outline, size: 16),
                   label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Hapus Riwayat')),
@@ -402,24 +223,117 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
     );
   }
 
-  // DELETE (D): Hapus 1 riwayat secara PERMANEN dari SQLite & Server API
-  Future<void> _hapusItem(int id) async {
+  // DELETE (D): Hapus 1 riwayat secara PERMANEN dari SQLite & Server API (dengan Alert Dialog Detail)
+  Future<void> _hapusItem(int id, {Map<String, dynamic>? item}) async {
+    final isOnline = await NetworkHelper.hasInternetConnection();
+    if (!mounted) return;
+    if (!isOnline) {
+      NetworkHelper.showOfflineDialog(context, featureName: 'Hapus Riwayat Presensi');
+      return;
+    }
+
+    final targetItem = item ??
+        _allAbsensi.firstWhere(
+          (e) => e[DatabaseHelper.columnId] == id,
+          orElse: () => <String, dynamic>{},
+        );
+
+    final tipe = targetItem[DatabaseHelper.columnTipe]?.toString() ?? 'Presensi';
+    final tanggal = targetItem[DatabaseHelper.columnTanggal]?.toString() ?? '-';
+    final waktu = targetItem[DatabaseHelper.columnWaktu]?.toString() ?? '-';
+    final keterangan = targetItem[DatabaseHelper.columnKeterangan]?.toString() ?? '-';
+    final isMasuk = tipe.toLowerCase() == 'masuk';
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.delete_forever, color: Colors.red),
-            SizedBox(width: 8),
-            Expanded(child: Text('Hapus Catatan Kehadiran?')),
+            Icon(
+              isMasuk ? Icons.login : Icons.logout,
+              color: isMasuk ? Colors.green : Colors.orange.shade800,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Hapus Absen $tipe?',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
-        content: const SingleChildScrollView(
-          child: Text(
-            'Catatan kehadiran ini akan dihapus secara permanen.\n\n'
-            '• Data yang dihapus tidak akan muncul kembali.\n'
-            '• Akun Anda yang sedang login tetap aktif.',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isMasuk ? Colors.green.shade50 : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isMasuk ? Colors.green.shade200 : Colors.orange.shade200,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: isMasuk ? Colors.green : Colors.orange.shade800,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Absen $tipe',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          waktu.contains('WIB') ? waktu : '$waktu WIB',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Tanggal: $tanggal',
+                      style: const TextStyle(fontSize: 12, color: Colors.black87),
+                    ),
+                    if (keterangan.isNotEmpty && keterangan != '-') ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        'Lokasi: $keterangan',
+                        style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Catatan kehadiran ini akan dihapus secara permanen.\n\n'
+                '• Data yang dihapus tidak akan muncul kembali.\n'
+                '• Akun Anda yang sedang login tetap aktif.',
+                style: TextStyle(fontSize: 12, color: Colors.black87),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -440,8 +354,11 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                   onPressed: () => Navigator.pop(ctx, true),
-                  icon: const Icon(Icons.delete, size: 18),
-                  label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Hapus Permanen')),
+                  icon: const Icon(Icons.delete_forever, size: 18),
+                  label: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text('Hapus $tipe'),
+                  ),
                 ),
               ),
             ],
@@ -475,7 +392,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
             const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
             Expanded(
-              child: const Text('Catatan kehadiran berhasil dihapus.'),
+              child: Text('Catatan Absen $tipe berhasil dihapus secara permanen.'),
             ),
           ],
         ),
@@ -488,6 +405,13 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
 
   // DELETE (D): Hapus semua riwayat secara PERMANEN (TIDAK mempengaruhi akun pengguna)
   Future<void> _hapusSemua() async {
+    final isOnline = await NetworkHelper.hasInternetConnection();
+    if (!mounted) return;
+    if (!isOnline) {
+      NetworkHelper.showOfflineDialog(context, featureName: 'Hapus Semua Riwayat');
+      return;
+    }
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -562,7 +486,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
           children: [
             Icon(Icons.check_circle, color: Colors.green),
             SizedBox(width: 8),
-            Text('Penghapusan Berhasil'),
+            Expanded(child: Text('Penghapusan Berhasil')),
           ],
         ),
         content: const Text(
@@ -601,11 +525,6 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
       appBar: AppBar(
         title: const Text('Daftar Kehadiran'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.cloud_sync),
-            tooltip: 'Sinkronkan ke API',
-            onPressed: _syncToApi,
-          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Muat Ulang',
@@ -861,7 +780,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
                                     IconButton(
                                       icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
                                       tooltip: 'Hapus Permanen',
-                                      onPressed: () => _hapusItem(id),
+                                      onPressed: () => _hapusItem(id, item: item),
                                     ),
                                   ],
                                 ),

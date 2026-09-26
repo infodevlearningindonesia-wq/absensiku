@@ -237,6 +237,20 @@ class DatabaseHelper {
     );
   }
 
+  // Update password user berdasarkan email
+  Future<int> updateUserPassword({
+    required String email,
+    required String newPassword,
+  }) async {
+    final db = await database;
+    return await db.update(
+      tableUsers,
+      {colUserPassword: newPassword},
+      where: 'LOWER($colUserEmail) = ?',
+      whereArgs: [email.toLowerCase().trim()],
+    );
+  }
+
   // Perbarui profil pengguna dengan penanganan otomatis email lama / ID / email baru
   Future<int> updateUserProfileSafe({
     int? id,
@@ -521,20 +535,23 @@ class DatabaseHelper {
   }) async {
     final db = await database;
 
-    // 1. Cek berdasarkan API ID jika ada
+    final cleanTipe = tipe.toLowerCase().trim();
+    final isMasuk = cleanTipe == 'masuk' || cleanTipe.contains('in');
+
+    // 1. Cek berdasarkan API ID DAN TIPE jika ada (Memisahkan alur Masuk & Keluar)
     if (apiId != null && apiId.isNotEmpty && apiId != 'null') {
       final resApi = await db.query(
         tableDeletedAbsensi,
-        where: '$colDeletedApiId = ?',
-        whereArgs: [apiId],
+        where: isMasuk
+            ? '$colDeletedApiId = ? AND (LOWER($colDeletedTipe) = ? OR LOWER($colDeletedTipe) LIKE ?)'
+            : '$colDeletedApiId = ? AND (LOWER($colDeletedTipe) = ? OR LOWER($colDeletedTipe) = ? OR LOWER($colDeletedTipe) LIKE ? OR LOWER($colDeletedTipe) LIKE ?)',
+        whereArgs: isMasuk
+            ? [apiId, 'masuk', '%masuk%']
+            : [apiId, 'keluar', 'pulang', '%keluar%', '%pulang%'],
         limit: 1,
       );
       if (resApi.isNotEmpty) return true;
     }
-
-    // 2. Cek berdasarkan tanggal, tipe, dan user_id
-    final cleanTipe = tipe.toLowerCase().trim();
-    final isMasuk = cleanTipe == 'masuk' || cleanTipe.contains('in');
     String where;
     List<dynamic> whereArgs = [tanggal];
 
@@ -585,10 +602,13 @@ class DatabaseHelper {
       whereArgs.addAll(['keluar', 'pulang', '%keluar%', '%pulang%']);
     }
 
-    if (userId != null) {
-      where += ' AND $columnUserId = ?';
+    if (userId != null && userId > 0) {
+      where += ' AND ($columnUserId = ? OR $columnUserId IS NULL OR $columnUserId = 0)';
       whereArgs.add(userId);
     }
+
+    // Pastikan hanya mencocokkan record dengan waktu yang valid (bukan dummy/kosong/00:00:00)
+    where += " AND $columnWaktu IS NOT NULL AND $columnWaktu != '' AND $columnWaktu != '00:00:00' AND $columnWaktu != '-' AND $columnWaktu != '--:--' AND $columnWaktu != '--:--:--'";
 
     final result = await db.query(
       tableAbsensi,

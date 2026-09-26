@@ -12,24 +12,101 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
-  Timer? _timer;
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _logoScaleAnimation;
+  late Animation<double> _logoFadeAnimation;
+  late Animation<double> _titleSlideAnimation;
+  late Animation<double> _titleFadeAnimation;
+  late Animation<double> _subtitleFadeAnimation;
+  late Animation<double> _loadingFadeAnimation;
+  late Animation<double> _pulseAnimation;
+
+  Timer? _navigationTimer;
 
   @override
   void initState() {
     super.initState();
-    _startTimer();
+
+    // 1. Controller Animasi Slow Motion (Durasi 4000ms untuk efek masuk sangat halus dan sinematik)
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4000),
+    );
+
+    // Animasi Scale Logo (Slow motion zoom in halus)
+    _logoScaleAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+      ),
+    );
+
+    // Animasi Fade In Logo
+    _logoFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.45, curve: Curves.easeIn),
+      ),
+    );
+
+    // Animasi Denyut / Glow Halo di Belakang Logo
+    _pulseAnimation = Tween<double>(begin: 12.0, end: 30.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.35, 1.0, curve: Curves.easeInOut),
+      ),
+    );
+
+    // Animasi Slide & Fade Judul "Absensiku"
+    _titleSlideAnimation = Tween<double>(begin: 24.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.25, 0.65, curve: Curves.easeOutQuart),
+      ),
+    );
+    _titleFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.25, 0.60, curve: Curves.easeIn),
+      ),
+    );
+
+    // Animasi Fade Subjudul
+    _subtitleFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.40, 0.75, curve: Curves.easeIn),
+      ),
+    );
+
+    // Animasi Fade Indikator Loading
+    _loadingFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.50, 0.80, curve: Curves.easeIn),
+      ),
+    );
+
+    // Jalankan animasi slow motion
+    _controller.forward();
+
+    // 2. Timer Durasi Splash & Loading Tepat 6 Detik
+    _startNavigationTimer();
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _navigationTimer?.cancel();
+    _controller.dispose();
     super.dispose();
   }
 
-  void _startTimer() {
-    _timer?.cancel();
-    _timer = Timer(const Duration(seconds: 2), () {
+  void _startNavigationTimer() {
+    _navigationTimer?.cancel();
+    // Menahan tampilan splash & loading selama tepat 6 detik sebelum pindah
+    _navigationTimer = Timer(const Duration(seconds: 6), () {
       if (mounted) {
         _checkSessionAndNavigate();
       }
@@ -37,7 +114,6 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _checkSessionAndNavigate() async {
-
     if (!mounted) return;
 
     try {
@@ -48,25 +124,35 @@ class _SplashScreenState extends State<SplashScreen> {
         AppApiService.autoSyncAllData();
 
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        _navigateWithSlowMotionTransition(const HomeScreen());
       } else {
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-        );
+        _navigateWithSlowMotionTransition(const LoginScreen());
       }
     } catch (_) {
-      // Fallback jika terjadi kegagalan pembacaan preferensi
       if (!mounted) return;
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
+      _navigateWithSlowMotionTransition(const LoginScreen());
     }
+  }
+
+  // Navigasi dengan transisi Fade Slow Motion yang sangat halus (1200ms)
+  void _navigateWithSlowMotionTransition(Widget targetScreen) {
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 1200),
+        pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOutCubic,
+            ),
+            child: child,
+          );
+        },
+      ),
+    );
   }
 
   @override
@@ -74,85 +160,151 @@ class _SplashScreenState extends State<SplashScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Spacer(),
-              // Logo Aplikasi
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withValues(alpha: 0.25),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Nama Aplikasi
-              const Text(
-                'Absensiku',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                  color: Colors.blueAccent,
-                ),
-              ),
-              const SizedBox(height: 6),
-              // Slogan / Subtitle
-              Text(
-                'Sistem Presensi Karyawan & Siswa',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 32),
-              // Indikator Loading
-              const SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  color: Colors.blueAccent,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Menyiapkan aplikasi...',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[500],
-                ),
-              ),
-              const Spacer(),
-              // Versi Aplikasi di Bagian Bawah
-              Padding(
-                padding: const EdgeInsets.only(bottom: 24.0),
-                child: Text(
-                  'Versi 1.0.0',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[400],
-                    letterSpacing: 0.5,
+                child: IntrinsicHeight(
+                  child: AnimatedBuilder(
+                    animation: _controller,
+                    builder: (context, child) {
+                      return Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Spacer(flex: 2),
+
+                              // 1. LOGO DENGAN SLOW MOTION SCALE, FADE & PULSE GLOW
+                              Transform.scale(
+                                scale: _logoScaleAnimation.value,
+                                child: Opacity(
+                                  opacity: _logoFadeAnimation.value,
+                                  child: Container(
+                                    width: 104,
+                                    height: 104,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(26),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.blueAccent.withValues(alpha: 0.28),
+                                          blurRadius: _pulseAnimation.value,
+                                          spreadRadius: 2,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.blue.withValues(alpha: 0.12),
+                                          blurRadius: _pulseAnimation.value * 1.5,
+                                          spreadRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: Image.asset(
+                                      'assets/images/logo.png',
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // 2. NAMA APLIKASI DENGAN SLOW MOTION SLIDE & FADE
+                              Transform.translate(
+                                offset: Offset(0, _titleSlideAnimation.value),
+                                child: Opacity(
+                                  opacity: _titleFadeAnimation.value,
+                                  child: const Text(
+                                    'Absensiku',
+                                    style: TextStyle(
+                                      fontSize: 34,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.8,
+                                      color: Colors.blueAccent,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              // 3. SUBTITEL / SLOGAN DENGAN SLOW MOTION FADE
+                              Opacity(
+                                opacity: _subtitleFadeAnimation.value,
+                                child: Text(
+                                  'Sistem Presensi Karyawan & Siswa',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey[600],
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 36),
+
+                              // 4. INDIKATOR LOADING SLOW MOTION
+                              Opacity(
+                                opacity: _loadingFadeAnimation.value,
+                                child: Column(
+                                  children: [
+                                    const SizedBox(
+                                      width: 26,
+                                      height: 26,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.8,
+                                        color: Colors.blueAccent,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Text(
+                                      'Menyiapkan aplikasi...',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                        color: Colors.grey[500],
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const Spacer(flex: 3),
+
+                              // 5. FOOTER VERSI
+                              Opacity(
+                                opacity: _loadingFadeAnimation.value,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 24.0, top: 16.0),
+                                  child: Text(
+                                    'Versi 1.0.0',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[400],
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

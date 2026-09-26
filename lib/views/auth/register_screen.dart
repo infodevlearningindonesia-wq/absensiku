@@ -4,6 +4,7 @@ import 'package:absensiku/database/db_helper.dart';
 import 'package:absensiku/models/register_models.dart';
 import 'package:absensiku/services/api_services.dart';
 import 'package:absensiku/services/dio_system.dart';
+import 'package:absensiku/services/network_helper.dart';
 import 'package:absensiku/views/auth/login_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -96,6 +97,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() {
       _isLoading = true;
     });
+
+    // 1. Periksa koneksi internet (Wajib online)
+    final hasInternet = await NetworkHelper.hasInternetConnection();
+    if (!hasInternet) {
+      if (mounted) setState(() => _isLoading = false);
+      if (!mounted) return;
+      NetworkHelper.showOfflineDialog(context, featureName: 'Fitur Registrasi Akun');
+      return;
+    }
 
     final name = _nameController.text.trim();
     final email = _emailController.text.trim().toLowerCase();

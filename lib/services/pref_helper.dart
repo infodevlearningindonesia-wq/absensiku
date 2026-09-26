@@ -141,6 +141,12 @@ class PrefHelper {
   }
 
   static const String _keyLastClearedAt = 'last_cleared_at';
+  static const String _keyAutoCloudSync = 'auto_cloud_sync';
+  static const String _keyAutoPhotoSync = 'auto_photo_sync';
+  static const String _keySyncInterval = 'sync_interval_seconds';
+  static const String _keyNotificationReminder = 'notif_reminder';
+  static const String _keySoundVibration = 'sound_vibration';
+  static const String _keyLastCloudSyncTime = 'last_cloud_sync_time';
 
   // Catat waktu terakhir "Hapus Semua" dilakukan agar sinkronisasi tidak menarik kembali data lama
   static Future<void> setLastClearedTimestamp(String timestamp) async {
@@ -152,6 +158,95 @@ class PrefHelper {
   static Future<String?> getLastClearedTimestamp() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyLastClearedAt);
+  }
+
+  // --- PENGATURAN CLOUD SYNC & SISTEM PENYIMPANAN AWAN ---
+
+  // Cek apakah Penyimpanan Otomatis ke Cloud / API aktif (Default: true)
+  static Future<bool> isAutoCloudSyncEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyAutoCloudSync) ?? true;
+  }
+
+  // Atur status Penyimpanan Otomatis ke Cloud / API
+  static Future<void> setAutoCloudSync(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAutoCloudSync, enabled);
+  }
+
+  // Cek apakah Upload Foto Profil Otomatis aktif (Default: true)
+  static Future<bool> isAutoPhotoSyncEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyAutoPhotoSync) ?? true;
+  }
+
+  // Atur status Upload Foto Profil Otomatis
+  static Future<void> setAutoPhotoSync(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAutoPhotoSync, enabled);
+  }
+
+  // Ambil interval sinkronisasi otomatis dalam detik (Default: 30 detik)
+  static Future<int> getSyncIntervalSeconds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keySyncInterval) ?? 30;
+  }
+
+  // Atur interval sinkronisasi otomatis dalam detik
+  static Future<void> setSyncIntervalSeconds(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keySyncInterval, seconds);
+  }
+
+  // Cek apakah Pengingat Notifikasi aktif (Default: true)
+  static Future<bool> isNotificationReminderEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyNotificationReminder) ?? true;
+  }
+
+  // Atur status Pengingat Notifikasi
+  static Future<void> setNotificationReminder(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyNotificationReminder, enabled);
+  }
+
+  // Cek apakah Suara & Getaran aktif (Default: true)
+  static Future<bool> isSoundVibrationEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keySoundVibration) ?? true;
+  }
+
+  // Atur status Suara & Getaran
+  static Future<void> setSoundVibration(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySoundVibration, enabled);
+  }
+
+  // Catat waktu sinkronisasi cloud terakhir
+  static Future<void> setLastCloudSyncTime(String timeStr) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyLastCloudSyncTime, timeStr);
+  }
+
+  // Ambil waktu sinkronisasi cloud terakhir
+  static Future<String?> getLastCloudSyncTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyLastCloudSyncTime);
+  }
+
+  // --- PENGATURAN PENYIMPANAN INTERNAL & EKSTERNAL PONSEL ---
+  static const String _keyStorageTarget = 'storage_target_location'; // 'internal' | 'external'
+
+  // Ambil lokasi target penyimpanan yang dipilih pengguna (Default: 'internal')
+  static Future<String> getStorageTarget() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyStorageTarget) ?? 'internal';
+  }
+
+  // Atur lokasi target penyimpanan ('internal' atau 'external')
+  static Future<void> setStorageTarget(String target) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyStorageTarget, target);
   }
 
   // Hapus semua session saat logout
