@@ -894,6 +894,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     if (unsynced.isEmpty) {
+      // Jalankan sinkronisasi background 2 arah untuk menarik data terbaru jika ada
+      _autoSyncAll();
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -905,7 +907,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text('Sinkronisasi Selesai'),
             ],
           ),
-          content: const Text('Semua data absensi sudah tersinkronisasi ke API server.'),
+          content: const Text('Semua data absensi di perangkat sudah tersinkronisasi ke API server.'),
           actions: [
             Row(
               children: [
@@ -925,41 +927,142 @@ class _HomeScreenState extends State<HomeScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Menyinkronkan ${unsynced.length} data ke API server...'),
+        content: Text('Menyinkronkan ${unsynced.length} data kehadiran ke API server...'),
         duration: const Duration(seconds: 1),
       ),
     );
 
-    final count = await AppApiService.syncAllPendingToApi();
+    final syncResult = await AppApiService.syncAllPendingToApi();
+    // Sinkronisasi 2 arah untuk update data lokal
+    await AppApiService.autoSyncAllData();
     await _loadAbsensiFromDb();
     if (!mounted) return;
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.cloud_done, color: Colors.green),
-            SizedBox(width: 8),
-            Text('Hasil Sinkronisasi'),
-          ],
-        ),
-        content: Text('$count data kehadiran berhasil disinkronkan ke API server!'),
-        actions: [
-          Row(
+    if (syncResult.syncedCount > 0 && syncResult.failedCount == 0) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Tutup'),
-                ),
-              ),
+              Icon(Icons.cloud_done, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Hasil Sinkronisasi'),
             ],
           ),
-        ],
-      ),
-    );
+          content: Text('${syncResult.syncedCount} data kehadiran berhasil disinkronkan ke API server!'),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Tutup'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    } else if (syncResult.syncedCount > 0 && syncResult.failedCount > 0) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.orange),
+              SizedBox(width: 8),
+              Text('Sinkronisasi Sebagian'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('• Berhasil: ${syncResult.syncedCount} data kehadiran'),
+                Text('• Tertunda: ${syncResult.failedCount} data kehadiran'),
+                const SizedBox(height: 12),
+                const Text('Catatan Kendala:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  syncResult.errors.join('\n'),
+                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Tutup'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    } else {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.redAccent),
+              SizedBox(width: 8),
+              Text('Sinkronisasi Tertunda'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Sebanyak ${syncResult.totalPending} data absensi belum berhasil disinkronkan ke API server.',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                const Text('Penyebab / Kendala:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  syncResult.errors.isNotEmpty ? syncResult.errors.join('\n') : syncResult.message,
+                  style: const TextStyle(fontSize: 12, color: Colors.red),
+                ),
+                const SizedBox(height: 12),
+                const Text('Petunjuk Solusi:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  syncResult.isAuthError
+                      ? 'Sesi token API offline atau telah berakhir. Silakan login kembali dengan koneksi internet aktif agar sesi terhubung ke server.'
+                      : 'Pastikan koneksi internet ponsel stabil dan server API sedang aktif.',
+                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Tutup'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
     _loadAbsensiFromDb();
   }
 
