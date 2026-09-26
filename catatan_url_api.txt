@@ -1,0 +1,84 @@
+================================================================================
+INFORMASI & ISI TEKS DARI URL: https://absensib1.mobileprojp.com
+Tanggal Pembacaan: 25 September 2026
+================================================================================
+
+1. TEKS ASLI HALAMAN WEB (FRONTEND):
+--------------------------------------------------------------------------------
+Judul Halaman Browser:
+Laravel
+
+Heading Utama:
+Let's get started
+
+Deskripsi:
+Laravel has an incredibly rich ecosystem.
+We suggest starting with the following.
+
+Daftar Menu & Tautan:
+- Read the Documentation  -> https://laravel.com/docs
+- Watch video tutorials at Laracasts -> https://laracasts.com
+- Deploy now -> https://cloud.laravel.com
+
+
+2. TERJEMAHAN BAHASA INDONESIA:
+--------------------------------------------------------------------------------
+Judul Halaman:
+Laravel
+
+Judul Bagian:
+Mari kita mulai
+
+Deskripsi:
+Laravel memiliki ekosistem yang sangat kaya.
+Kami menyarankan untuk memulai dengan hal-hal berikut.
+
+Menu & Tombol:
+- Baca Dokumentasi -> https://laravel.com/docs
+- Tonton video tutorial di Laracasts -> https://laracasts.com
+- Deploy sekarang -> https://cloud.laravel.com
+
+
+3. INFORMASI HOST & SERVER:
+--------------------------------------------------------------------------------
+- Full URL           : https://absensib1.mobileprojp.com
+- Subdomain          : absensib1 (Absensi B1)
+- Domain Utama       : mobileprojp.com (Mobile Pro JP)
+- Hosting Provider   : DomaiNesia
+- IP Server          : 36.50.77.52
+- Framework Backend  : Laravel 11 / 12
+
+
+4. STRUKTUR REST API AKTIF PADA URL:
+--------------------------------------------------------------------------------
+A. Autentikasi:
+   - POST /api/register
+     Mendaftarkan user baru (name, email, password).
+     Syarat password: Wajib huruf besar, huruf kecil, dan angka/simbol.
+   
+   - POST /api/login
+     Login user untuk mendapatkan Bearer Token (email, password).
+   
+   - GET /api/profile
+     Mengambil data profil pengguna yang sedang login.
+     Header: Authorization: Bearer <token>
+
+B. Presensi / Absensi:
+   - POST /api/absen/check-in
+     Absen masuk.
+     Body: check_in_lat, check_in_lng, check_in_address
+     Header: Authorization: Bearer <token>
+
+   - POST /api/absen/check-out
+     Absen keluar/pulang.
+     Body: check_out_lat, check_out_lng, check_out_address
+     Header: Authorization: Bearer <token>
+
+   - GET /api/absen/history
+     Mengambil daftar riwayat absensi pengguna.
+     Header: Authorization: Bearer <token>
+
+   - DELETE /api/absen/{id}
+     Menghapus data absensi berdasarkan ID absensi.
+     Header: Authorization: Bearer <token>
+================================================================================
