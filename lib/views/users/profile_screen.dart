@@ -5,6 +5,7 @@ import 'package:absensiku/database/db_helper.dart';
 import 'package:absensiku/services/api_services.dart';
 import 'package:absensiku/services/pref_helper.dart';
 import 'package:absensiku/views/auth/login_screen.dart';
+import 'package:absensiku/views/auth/register_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -612,27 +613,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         photoPath: _userPhotoPath,
                                       );
 
-                                      // 2. Simpan ke SQLite Database
+                                      // 2. Simpan ke SQLite Database secara aman tanpa collision UNIQUE
                                       try {
-                                        if (_userId != null) {
-                                          await DatabaseHelper.instance.updateUser(
-                                            id: _userId!,
-                                            nama: newName,
-                                            email: newEmail,
-                                            phone: newPhone,
-                                            alamat: newAlamat,
-                                            foto: _userPhotoPath,
-                                          );
-                                        } else {
-                                          await DatabaseHelper.instance.updateUserByEmail(
-                                            oldEmail: _userEmail,
-                                            nama: newName,
-                                            newEmail: newEmail,
-                                            phone: newPhone,
-                                            alamat: newAlamat,
-                                            foto: _userPhotoPath,
-                                          );
-                                        }
+                                        await DatabaseHelper.instance.updateUserProfileSafe(
+                                          id: _userId,
+                                          oldEmail: _userEmail,
+                                          nama: newName,
+                                          newEmail: newEmail,
+                                          phone: newPhone,
+                                          alamat: newAlamat,
+                                          foto: _userPhotoPath,
+                                        );
                                       } catch (dbError) {
                                         debugPrint('Error updating SQLite user profile: $dbError');
                                       }
@@ -658,7 +649,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         Navigator.pop(ctx);
                                       }
 
-                                      await _loadProfileData();
+                                      // Perbarui state secara langsung agar UI langsung responsif
+                                      if (mounted) {
+                                        setState(() {
+                                          _userName = newName;
+                                          _userEmail = newEmail;
+                                          _userPhone = newPhone;
+                                          _userAlamat = newAlamat;
+                                        });
+                                      }
+
+                                      await _loadProfileData(syncApi: false);
 
                                       if (!mounted) return;
                                       showDialog(
@@ -811,6 +812,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   backgroundColor: apiData != null ? Colors.green : Colors.orange,
                   behavior: SnackBarBehavior.floating,
                 ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.person_add_alt),
+            tooltip: 'Tambah Akun di Register',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const RegisterScreen()),
               );
             },
           ),
@@ -1148,7 +1159,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     const SizedBox(height: 24),
 
-                    // 5. TOMBOL LOGOUT BESAR
+                    // 5. KARTU KELOLA AKUN (TAMBAH AKUN DI REGISTER)
+                    _buildSectionTitle('Kelola & Pendaftaran Akun'),
+                    Card(
+                      elevation: 1.5,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: const CircleAvatar(
+                              backgroundColor: Colors.blueAccent,
+                              child: Icon(Icons.person_add_alt_1, color: Colors.white, size: 20),
+                            ),
+                            title: const Text(
+                              'Tambah Akun di Register',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            subtitle: const Text(
+                              'Daftarkan akun pengguna baru ke server API & database lokal SQLite',
+                            ),
+                            trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const RegisterScreen()),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 6. TOMBOL LOGOUT BESAR
                     SizedBox(
                       width: double.infinity,
                       height: 48,

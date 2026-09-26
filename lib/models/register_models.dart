@@ -16,11 +16,14 @@ class RegisterModel {
   final String? email;
   @JsonKey(name: "password")
   final String? password;
+  @JsonKey(name: "password_confirmation")
+  final String? passwordConfirmation;
 
   RegisterModel({
     this.name,
     this.email,
     this.password,
+    this.passwordConfirmation,
   });
 
   factory RegisterModel.fromJson(Map<String, dynamic> json) =>

@@ -100,6 +100,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final name = _nameController.text.trim();
     final email = _emailController.text.trim().toLowerCase();
     final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
 
     try {
       // 1. PANGGIL API REGISTRASI KE SERVER BACKEND
@@ -111,6 +112,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           name: name,
           email: email,
           password: password,
+          passwordConfirmation: confirmPassword,
         ),
       );
 
@@ -126,7 +128,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      // 3. DIALOG SUKSES
+      // 3. DIALOG SUKSES DENGAN OPSI TAMBAH AKUN LAGI ATAU LOGIN
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -151,24 +153,58 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  response.message ?? 'Akun Anda ($email) berhasil didaftarkan ke server API dan tersimpan di database lokal SQLite.',
+                  response.message ?? 'Akun baru ($email) berhasil didaftarkan ke server API dan tersimpan di database lokal SQLite.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const LoginScreen(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          // Reset formulir untuk menambah akun baru lainnya
+                          _nameController.clear();
+                          _emailController.clear();
+                          _passwordController.clear();
+                          _confirmPasswordController.clear();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Silakan masukkan data untuk menambah akun baru lainnya.'),
+                              backgroundColor: Colors.blueAccent,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Tambah Akun Lain'),
                         ),
-                      );
-                    },
-                    child: const Text('Masuk Sekarang'),
-                  ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blueAccent,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const LoginScreen(),
+                            ),
+                          );
+                        },
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('Masuk Sekarang'),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

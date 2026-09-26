@@ -237,57 +237,10 @@ class DatabaseHelper {
     );
   }
 
-  // Perbarui profil user berdasarkan ID
-  Future<int> updateUser({
-    required int id,
-    required String nama,
-    required String email,
-    String? phone,
-    String? alamat,
-    String? foto,
-  }) async {
-    final db = await database;
-    final cleanEmail = email.toLowerCase().trim();
-
-    // Hapus akun lain yang memakai email yang sama agar tidak melanggar UNIQUE constraint
-    try {
-      await db.delete(
-        tableUsers,
-        where: 'LOWER($colUserEmail) = ? AND $colUserId != ?',
-        whereArgs: [cleanEmail, id],
-      );
-    } catch (_) {}
-
-    final Map<String, dynamic> data = {
-      colUserNama: nama.trim(),
-      colUserEmail: cleanEmail,
-    };
-    if (phone != null) data[colUserPhone] = phone.trim();
-    if (alamat != null) data[colUserAlamat] = alamat.trim();
-    if (foto != null) data[colUserFoto] = foto.trim();
-
-    // Perbarui juga nama pada tabel absensi milik user ini
-    try {
-      await db.update(
-        tableAbsensi,
-        {columnNama: nama.trim()},
-        where: '$columnUserId = ?',
-        whereArgs: [id],
-      );
-    } catch (_) {}
-
-    return await db.update(
-      tableUsers,
-      data,
-      where: '$colUserId = ?',
-      whereArgs: [id],
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  // Perbarui profil user berdasarkan Email lama
-  Future<int> updateUserByEmail({
-    required String oldEmail,
+  // Perbarui profil pengguna dengan penanganan otomatis email lama / ID / email baru
+  Future<int> updateUserProfileSafe({
+    int? id,
+    String? oldEmail,
     required String nama,
     required String newEmail,
     String? phone,
@@ -295,16 +248,63 @@ class DatabaseHelper {
     String? foto,
   }) async {
     final db = await database;
-    final cleanOldEmail = oldEmail.toLowerCase().trim();
     final cleanNewEmail = newEmail.toLowerCase().trim();
+    final cleanOldEmail = (oldEmail ?? '').toLowerCase().trim();
 
-    // Hapus akun lain yang memakai newEmail jika bukan akun dengan oldEmail ini
-    if (cleanOldEmail != cleanNewEmail) {
+    // 1. Cari user yang akan diperbarui (berdasarkan cleanOldEmail dulu, lalu ID, lalu cleanNewEmail)
+    Map<String, dynamic>? existingUser;
+    if (cleanOldEmail.isNotEmpty) {
+      final res = await db.query(
+        tableUsers,
+        where: 'LOWER($colUserEmail) = ?',
+        whereArgs: [cleanOldEmail],
+        limit: 1,
+      );
+      if (res.isNotEmpty) {
+        existingUser = res.first;
+      }
+    }
+
+    if (existingUser == null && id != null) {
+      final res = await db.query(
+        tableUsers,
+        where: '$colUserId = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (res.isNotEmpty) {
+        existingUser = res.first;
+      }
+    }
+
+    if (existingUser == null) {
+      final res = await db.query(
+        tableUsers,
+        where: 'LOWER($colUserEmail) = ?',
+        whereArgs: [cleanNewEmail],
+        limit: 1,
+      );
+      if (res.isNotEmpty) {
+        existingUser = res.first;
+      }
+    }
+
+    // 2. Cegah UNIQUE constraint: hapus baris lain yang punya cleanNewEmail jika berbeda dari baris target
+    final int? targetLocalId = existingUser != null ? (existingUser[colUserId] as int?) : null;
+    if (targetLocalId != null) {
       try {
         await db.delete(
           tableUsers,
-          where: 'LOWER($colUserEmail) = ? AND LOWER($colUserEmail) != ?',
-          whereArgs: [cleanNewEmail, cleanOldEmail],
+          where: 'LOWER($colUserEmail) = ? AND $colUserId != ?',
+          whereArgs: [cleanNewEmail, targetLocalId],
+        );
+      } catch (_) {}
+    } else {
+      try {
+        await db.delete(
+          tableUsers,
+          where: 'LOWER($colUserEmail) = ?',
+          whereArgs: [cleanNewEmail],
         );
       } catch (_) {}
     }
@@ -317,12 +317,71 @@ class DatabaseHelper {
     if (alamat != null) data[colUserAlamat] = alamat.trim();
     if (foto != null) data[colUserFoto] = foto.trim();
 
-    return await db.update(
-      tableUsers,
-      data,
-      where: 'LOWER($colUserEmail) = ?',
-      whereArgs: [cleanOldEmail],
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    int result = 0;
+    if (targetLocalId != null) {
+      result = await db.update(
+        tableUsers,
+        data,
+        where: '$colUserId = ?',
+        whereArgs: [targetLocalId],
+      );
+    } else {
+      // Jika belum ada di lokal, tambahkan sebagai user baru
+      data[colUserPassword] = 'OfflinePassword123!';
+      data[colUserCreatedAt] = DateTime.now().toIso8601String();
+      result = await db.insert(tableUsers, data);
+    }
+
+    // 3. Perbarui juga nama pada tabel absensi milik user ini
+    try {
+      if (targetLocalId != null) {
+        await db.update(
+          tableAbsensi,
+          {columnNama: nama.trim()},
+          where: '$columnUserId = ?',
+          whereArgs: [targetLocalId],
+        );
+      }
+    } catch (_) {}
+
+    return result;
+  }
+
+  // Perbarui profil user berdasarkan ID
+  Future<int> updateUser({
+    required int id,
+    required String nama,
+    required String email,
+    String? phone,
+    String? alamat,
+    String? foto,
+  }) async {
+    return await updateUserProfileSafe(
+      id: id,
+      nama: nama,
+      newEmail: email,
+      phone: phone,
+      alamat: alamat,
+      foto: foto,
+    );
+  }
+
+  // Perbarui profil user berdasarkan Email lama
+  Future<int> updateUserByEmail({
+    required String oldEmail,
+    required String nama,
+    required String newEmail,
+    String? phone,
+    String? alamat,
+    String? foto,
+  }) async {
+    return await updateUserProfileSafe(
+      oldEmail: oldEmail,
+      nama: nama,
+      newEmail: newEmail,
+      phone: phone,
+      alamat: alamat,
+      foto: foto,
     );
   }
 

@@ -1,6 +1,22 @@
 {
-  "name": "",
-  "email": "",
-  "password": "",
-  "password_confirmation": ""
+  "name": "Muhammad Faiz Aldo Firmansyah",
+  "email": "muhammadfaizaldo@gmail.com",
+  "password": "Password123!",
+  "password_confirmation": "Password123!",
+  "keterangan": "Template & contoh akun yang dapat ditambahkan/didaftarkan di RegisterScreen",
+  "syarat_password": "Minimal 8 karakter, wajib kombinasi huruf besar, huruf kecil, dan angka/simbol (cth: Password123!)",
+  "daftar_akun_contoh": [
+    {
+      "name": "Muhammad Faiz Aldo Firmansyah",
+      "email": "muhammadfaizaldo@gmail.com",
+      "password": "Password123!",
+      "password_confirmation": "Password123!"
+    },
+    {
+      "name": "Akun Baru",
+      "email": "akunbaru_absensi123@gmail.com",
+      "password": "Password123!",
+      "password_confirmation": "Password123!"
+    }
+  ]
 }

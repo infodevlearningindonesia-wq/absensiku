@@ -359,14 +359,21 @@ class AppApiService {
         final data = response.data['data'] as Map<String, dynamic>?;
         if (data != null) {
           final name = data['name'] as String?;
-          final email = data['email'] as String?;
+          final serverEmail = data['email'] as String?;
           final id = data['id'] as int?;
-          if (name != null && email != null) {
+
+          // Pertahankan email lokal yang sudah diperbarui agar tidak tertimpa email lama server
+          final localEmail = await PrefHelper.getUserEmail();
+          final effectiveEmail = (localEmail != null && localEmail.isNotEmpty)
+              ? localEmail
+              : (serverEmail ?? '');
+
+          if (name != null) {
             await PrefHelper.saveSession(
               token: token,
               userId: id,
               name: name,
-              email: email,
+              email: effectiveEmail,
             );
           }
           return data;
@@ -423,15 +430,17 @@ class AppApiService {
 
       if (isSuccess) {
         final confirmedName = resData?['name']?.toString() ?? name.trim();
-        final confirmedEmail = resData?['email']?.toString() ?? email.trim();
         final confirmedId = (resData?['id'] as num?)?.toInt();
 
-        // Perbarui sesi SharedPreferences dengan data terkonfirmasi dari server
+        // Email yang diperbarui oleh pengguna selalu disimpan dan diprioritaskan
+        final targetEmail = email.trim();
+
+        // Perbarui sesi SharedPreferences dengan email yang diperbarui
         await PrefHelper.saveSession(
           token: token,
           userId: confirmedId,
           name: confirmedName,
-          email: confirmedEmail,
+          email: targetEmail,
         );
 
         return UpdateProfileResult(

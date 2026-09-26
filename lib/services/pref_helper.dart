@@ -42,6 +42,12 @@ class PrefHelper {
     return prefs.getString(_keyUserEmail);
   }
 
+  // Simpan / Perbarui Email Pengguna
+  static Future<void> setUserEmail(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyUserEmail, email.trim());
+  }
+
   // Ambil User ID
   static Future<int?> getUserId() async {
     final prefs = await SharedPreferences.getInstance();
