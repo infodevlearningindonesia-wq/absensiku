@@ -858,8 +858,31 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Status Sync',
                 isSync ? 'Sudah Tersinkron ke Server' : 'Tersimpan Lokal (SQLite)',
               ),
-              if (lat != null && lon != null)
+              if (lat != null && lon != null) ...[
                 _buildDetailItemRow('Koordinat GPS', '$lat, $lon'),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blueAccent,
+                      side: const BorderSide(color: Colors.blueAccent),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const GoogleMapsScreenDay19()),
+                      );
+                    },
+                    icon: const Icon(Icons.map_outlined, size: 18),
+                    label: const Text('Buka di Peta (Google Maps)', style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               _buildDetailItemRow('Keterangan / Lokasi', keterangan),
               const SizedBox(height: 8),
               Container(

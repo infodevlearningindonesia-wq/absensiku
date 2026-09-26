@@ -175,5 +175,34 @@ void main() {
     expect(result.containsKey('apiItemsSynced'), isTrue);
     expect(result.containsKey('profileSynced'), isTrue);
   });
+
+  testWidgets('SplashScreen renders branding and app title correctly', (WidgetTester tester) async {
+    await tester.pumpWidget(const MyApp());
+    expect(find.text('Absensiku'), findsOneWidget);
+    expect(find.text('Sistem Presensi Karyawan & Siswa'), findsOneWidget);
+    expect(find.text('Menyiapkan aplikasi...'), findsOneWidget);
+    expect(find.text('Versi 1.0.0'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    // Jalankan timer splash 2 detik agar selesai dan bersih
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+  });
+
+  testWidgets('All application pages routes are connected and resolvable', (WidgetTester tester) async {
+    final app = const MyApp();
+    final element = app.createElement();
+    final widget = app.build(element) as MaterialApp;
+
+    expect(widget.routes, isNotNull);
+    expect(widget.routes!.containsKey('/splash'), isTrue);
+    expect(widget.routes!.containsKey('/login'), isTrue);
+    expect(widget.routes!.containsKey('/register'), isTrue);
+    expect(widget.routes!.containsKey('/home'), isTrue);
+    expect(widget.routes!.containsKey('/daftar_hadir'), isTrue);
+    expect(widget.routes!.containsKey('/profile'), isTrue);
+    expect(widget.routes!.containsKey('/maps'), isTrue);
+  });
 }
+
 

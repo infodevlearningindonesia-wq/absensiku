@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:absensiku/database/db_helper.dart';
 import 'package:absensiku/services/api_services.dart';
 import 'package:absensiku/services/pref_helper.dart';
+import 'package:absensiku/views/users/maps_screen.dart';
 
 class DaftarHadirScreen extends StatefulWidget {
   const DaftarHadirScreen({super.key});
@@ -309,8 +310,31 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
                 'Status Sync',
                 isSync ? 'Sudah Tersinkron ke Server' : 'Tersimpan Lokal (SQLite)',
               ),
-              if (lat != null && lon != null)
+              if (lat != null && lon != null) ...[
                 _buildDetailInfoRow('Koordinat GPS', '$lat, $lon'),
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blueAccent,
+                      side: const BorderSide(color: Colors.blueAccent),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const GoogleMapsScreenDay19()),
+                      );
+                    },
+                    icon: const Icon(Icons.map_outlined, size: 18),
+                    label: const Text('Buka di Peta (Google Maps)', style: TextStyle(fontSize: 12)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
               _buildDetailInfoRow('Keterangan / Lokasi', keterangan),
               const SizedBox(height: 8),
               Container(
@@ -620,7 +644,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
                 ),
                 const SizedBox(width: 10),
                 _buildSummaryCard(
-                  title: 'Absen Keluar',
+                  title: 'Absen Pulang',
                   count: '$totalPulang',
                   icon: Icons.logout,
                   color: Colors.orange,
