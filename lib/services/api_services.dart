@@ -55,6 +55,32 @@ class SyncAllResult {
   String toString() => '$syncedCount/$totalPending data tersinkron';
 }
 
+class UpdateProfileResult {
+  final bool success;
+  final String message;
+  final Map<String, dynamic>? data;
+  final bool isAuthError;
+
+  UpdateProfileResult({
+    required this.success,
+    required this.message,
+    this.data,
+    this.isAuthError = false,
+  });
+}
+
+class UpdateAbsensiResult {
+  final bool success;
+  final String? newApiId;
+  final String message;
+
+  UpdateAbsensiResult({
+    required this.success,
+    this.newApiId,
+    required this.message,
+  });
+}
+
 class AppApiService {
   // Memastikan tersedianya token API yang valid (mencoba login otomatis jika saat ini offline/dummy)
   static Future<String?> ensureValidApiToken() async {
@@ -291,7 +317,8 @@ class AppApiService {
 
   // 3. Hapus data absensi dari API
   static Future<bool> deleteAbsensiFromApi(dynamic id) async {
-    final token = await PrefHelper.getToken();
+    if (id == null || id.toString().trim().isEmpty || id.toString().trim() == '0') return false;
+    final token = await ensureValidApiToken();
     if (token == null || token.isEmpty) return false;
 
     try {
@@ -305,7 +332,7 @@ class AppApiService {
           },
         ),
       );
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 204;
     } catch (_) {
       return false;
     }
@@ -313,7 +340,7 @@ class AppApiService {
 
   // 4. Mengambil profil pengguna terbaru dari API
   static Future<Map<String, dynamic>?> getProfileFromApi() async {
-    final token = await PrefHelper.getToken();
+    final token = await ensureValidApiToken();
     if (token == null || token.isEmpty) return null;
 
     try {
@@ -352,12 +379,18 @@ class AppApiService {
   }
 
   // 5. Perbarui data profil pengguna ke Server API (PUT /api/profile)
-  static Future<bool> updateProfileToApi({
+  static Future<UpdateProfileResult> updateProfileToApi({
     required String name,
     required String email,
   }) async {
-    final token = await PrefHelper.getToken();
-    if (token == null || token.isEmpty) return false;
+    final token = await ensureValidApiToken();
+    if (token == null || token.isEmpty) {
+      return UpdateProfileResult(
+        success: false,
+        message: 'Akun belum terhubung ke API (Sesi Offline / Kedaluwarsa). Silakan login kembali dengan koneksi internet.',
+        isAuthError: true,
+      );
+    }
 
     try {
       final dio = createDioClient();
@@ -375,10 +408,138 @@ class AppApiService {
           'email': email.trim(),
         },
       );
-      return response.statusCode == 200 || response.statusCode == 201;
-    } catch (_) {
-      return false;
+
+      final isSuccess = response.statusCode == 200 || response.statusCode == 201;
+      Map<String, dynamic>? resData;
+      String? resMsg;
+
+      if (response.data is Map) {
+        final resMap = response.data as Map;
+        resMsg = resMap['message']?.toString();
+        if (resMap['data'] is Map) {
+          resData = Map<String, dynamic>.from(resMap['data'] as Map);
+        }
+      }
+
+      if (isSuccess) {
+        final confirmedName = resData?['name']?.toString() ?? name.trim();
+        final confirmedEmail = resData?['email']?.toString() ?? email.trim();
+        final confirmedId = (resData?['id'] as num?)?.toInt();
+
+        // Perbarui sesi SharedPreferences dengan data terkonfirmasi dari server
+        await PrefHelper.saveSession(
+          token: token,
+          userId: confirmedId,
+          name: confirmedName,
+          email: confirmedEmail,
+        );
+
+        return UpdateProfileResult(
+          success: true,
+          message: resMsg ?? 'Data profil berhasil diperbarui di server API.',
+          data: resData,
+        );
+      }
+
+      return UpdateProfileResult(
+        success: false,
+        message: resMsg ?? 'Gagal memperbarui profil di server API (${response.statusCode}).',
+      );
+    } catch (e) {
+      if (e is DioException) {
+        final status = e.response?.statusCode;
+        final resData = e.response?.data;
+        String? msg;
+        if (resData is Map) {
+          msg = resData['message']?.toString();
+          if (resData['errors'] is Map) {
+            final errs = (resData['errors'] as Map).values.map((v) {
+              if (v is List) return v.join(', ');
+              return v.toString();
+            }).join('\n');
+            if (errs.isNotEmpty) {
+              msg = '$msg\n$errs';
+            }
+          }
+        }
+
+        if (status == 401) {
+          return UpdateProfileResult(
+            success: false,
+            message: 'Sesi otentikasi API telah kedaluwarsa (401). Silakan login ulang.',
+            isAuthError: true,
+          );
+        }
+        if (status == 422) {
+          return UpdateProfileResult(
+            success: false,
+            message: msg ?? 'Validasi profil ditolak server API.',
+          );
+        }
+        if (e.type == DioExceptionType.connectionTimeout ||
+            e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.receiveTimeout) {
+          return UpdateProfileResult(
+            success: false,
+            message: 'Koneksi ke server timeout atau tidak ada jaringan internet.',
+          );
+        }
+        return UpdateProfileResult(
+          success: false,
+          message: msg ?? 'Gagal memperbarui profil di server API ($status).',
+        );
+      }
+      return UpdateProfileResult(success: false, message: e.toString());
     }
+  }
+
+  // 5b. Perbarui data absensi di Server API (Replace strategy: Delete old + Create new jika sudah ada api_id)
+  static Future<UpdateAbsensiResult> updateAbsensiOnApi({
+    String? oldApiId,
+    required String tipe,
+    required String tanggal,
+    required String waktu,
+    double? latitude,
+    double? longitude,
+    String? keterangan,
+  }) async {
+    final token = await ensureValidApiToken();
+    if (token == null || token.isEmpty) {
+      return UpdateAbsensiResult(
+        success: false,
+        message: 'Akun belum terhubung ke API (Mode Offline). Perubahan disimpan di SQLite lokal.',
+      );
+    }
+
+    // Jika memiliki API ID lama di server, hapus dulu record lama di server
+    if (oldApiId != null &&
+        oldApiId.isNotEmpty &&
+        oldApiId != '0' &&
+        oldApiId != 'null') {
+      try {
+        await deleteAbsensiFromApi(oldApiId);
+      } catch (_) {}
+    }
+
+    // Kemudian submit data yang telah diperbarui ke server API
+    final submitRes = await submitAbsensiToApi(
+      tipe: tipe,
+      tanggal: tanggal,
+      waktu: waktu,
+      latitude: latitude,
+      longitude: longitude,
+      keterangan: keterangan,
+      isFromSync: true,
+    );
+
+    return UpdateAbsensiResult(
+      success: submitRes.success,
+      newApiId: submitRes.apiId,
+      message: submitRes.message ??
+          (submitRes.success
+              ? 'Data absensi berhasil diperbarui di server API.'
+              : 'Gagal memperbarui data di server API.'),
+    );
   }
 
   // 6. Sinkronkan semua data lokal SQLite yang belum tersinkron ke API

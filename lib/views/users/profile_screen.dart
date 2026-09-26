@@ -637,14 +637,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         debugPrint('Error updating SQLite user profile: $dbError');
                                       }
 
-                                      // 3. Otomatis sinkronkan perubahan profil ke API Server (PUT /api/profile)
-                                      bool apiSyncSuccess = false;
+                                      // 3. Otomatis perbarui data profil ke API Server (PUT /api/profile)
+                                      UpdateProfileResult apiResult = UpdateProfileResult(
+                                        success: false,
+                                        message: 'Belum terhubung ke server',
+                                      );
                                       try {
-                                        apiSyncSuccess = await AppApiService.updateProfileToApi(
+                                        apiResult = await AppApiService.updateProfileToApi(
                                           name: newName,
                                           email: newEmail,
                                         );
-                                      } catch (_) {}
+                                      } catch (e) {
+                                        apiResult = UpdateProfileResult(
+                                          success: false,
+                                          message: e.toString(),
+                                        );
+                                      }
 
                                       if (ctx.mounted) {
                                         Navigator.pop(ctx);
@@ -657,18 +665,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         context: context,
                                         builder: (c) => AlertDialog(
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                          title: const Row(
+                                          title: Row(
                                             children: [
-                                              Icon(Icons.check_circle, color: Colors.green),
-                                              SizedBox(width: 8),
-                                              Expanded(child: Text('Profil Berhasil Diperbarui')),
+                                              Icon(
+                                                apiResult.success ? Icons.check_circle : Icons.info_outline,
+                                                color: apiResult.success ? Colors.green : Colors.orange,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Text(
+                                                  apiResult.success
+                                                      ? 'Profil Berhasil Diperbarui'
+                                                      : 'Profil Tersimpan Lokal',
+                                                ),
+                                              ),
                                             ],
                                           ),
                                           content: SingleChildScrollView(
-                                            child: Text(
-                                              'Semua data profil (nama, email, no telepon, alamat, dan foto) berhasil disimpan.\n\n'
-                                              '• Database SQLite & Sesi: Tersimpan\n'
-                                              '• API Server Backend: ${apiSyncSuccess ? "Otomatis Tersinkronisasi" : "Tersimpan Lokal"}',
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Text(
+                                                  'Data profil pengguna telah diproses:',
+                                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                                ),
+                                                const SizedBox(height: 10),
+                                                const Text('• Database Lokal (SQLite): Tersimpan'),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '• Server Backend API: '
+                                                  '${apiResult.success ? "Berhasil Diperbarui (PUT /api/profile)" : "Tertunda / Gagal"}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    color: apiResult.success ? Colors.green.shade800 : Colors.orange.shade900,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Container(
+                                                  padding: const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(
+                                                    color: apiResult.success
+                                                        ? Colors.green.shade50
+                                                        : Colors.orange.shade50,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    border: Border.all(
+                                                      color: apiResult.success
+                                                          ? Colors.green.shade200
+                                                          : Colors.orange.shade200,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    apiResult.message,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: apiResult.success
+                                                          ? Colors.green.shade900
+                                                          : Colors.orange.shade900,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
                                           actions: [
