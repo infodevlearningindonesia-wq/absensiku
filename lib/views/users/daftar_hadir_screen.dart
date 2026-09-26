@@ -710,7 +710,7 @@ class _DaftarHadirScreenState extends State<DaftarHadirScreen> {
                                           ? Colors.green.shade100
                                           : Colors.orange.shade100,
                                       child: Icon(
-                                        isMasuk ? Icons.arrow_downward : Icons.arrow_upward,
+                                        isMasuk ? Icons.login_rounded : Icons.logout_rounded,
                                         color: isMasuk ? Colors.green : Colors.orange,
                                         size: 20,
                                       ),
