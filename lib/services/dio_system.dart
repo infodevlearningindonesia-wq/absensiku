@@ -12,7 +12,7 @@ Dio createDioClient({String? baseUrl}) {
   final dio = Dio(
     BaseOptions(
       baseUrl: baseUrl ?? AppConfig.baseUrl,
-      connectTimeout: const Duration(
+       connectTimeout: const Duration(
         seconds: 10,
       ), // Timeout saat mencoba menghubungkan ke server
       receiveTimeout: const Duration(

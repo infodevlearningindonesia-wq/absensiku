@@ -6,6 +6,7 @@ import 'package:absensiku/models/login_models.dart';
 import 'package:absensiku/services/api_services.dart';
 import 'package:absensiku/services/dio_system.dart';
 import 'package:absensiku/services/network_helper.dart';
+import 'package:absensiku/services/notification_helper.dart';
 import 'package:absensiku/views/auth/register_screen.dart';
 import 'package:absensiku/views/auth/reset_password.dart';
 import 'package:absensiku/views/users/home_screen.dart';
@@ -90,6 +91,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
         // Otomatis sinkronisasi semua data API (riwayat absensi dan profil)
         AppApiService.autoSyncAllData();
+
+        // Tampilkan 1 notifikasi resmi saat masuk
+        AppNotificationHelper.showLoginSuccess(userName);
       }
 
       if (!mounted) return;

@@ -6,9 +6,11 @@ import 'package:sqflite/sqflite.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:absensiku/database/db_helper.dart';
 import 'package:absensiku/services/api_services.dart';
+import 'package:absensiku/services/cache_helper.dart';
 import 'package:absensiku/services/network_helper.dart';
 import 'package:absensiku/services/notification_helper.dart';
 import 'package:absensiku/services/pref_helper.dart';
+import 'package:absensiku/views/users/notification_center_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -39,6 +41,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   bool _isExternalAvailable = false;
   String _storageTarget = 'internal'; // 'internal' | 'external'
   String _databaseSize = '0 KB';
+  String _cacheSizeFormatted = 'Memuat...';
 
   @override
   void initState() {
@@ -95,6 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     String externalPath = 'Tidak Terpasang / Akses Dibatasi';
     bool externalAvailable = false;
     String dbSize = '0 KB';
+    String cacheSize = '0 KB';
 
     try {
       final appDocDir = await getApplicationDocumentsDirectory();
@@ -130,6 +134,10 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       }
     } catch (_) {}
 
+    try {
+      cacheSize = await AppCacheHelper.getFormattedCacheSize();
+    } catch (_) {}
+
     if (!mounted) return;
     setState(() {
       _autoCloudSync = autoSync;
@@ -145,6 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       _isExternalAvailable = externalAvailable;
       _storageTarget = target;
       _databaseSize = dbSize;
+      _cacheSizeFormatted = cacheSize;
       _isLoading = false;
     });
   }
@@ -330,6 +339,9 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
   }
 
   Future<void> _clearTemporaryCache() async {
+    final currentCache = await AppCacheHelper.getFormattedCacheSize();
+
+    if (!mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -340,15 +352,60 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Bersihkan Cache?',
+                'Pembersih Cache HP & APK',
                 overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
         ),
-        content: const SingleChildScrollView(
-          child: Text(
-            'Cache memori gambar dan file sementara akan dibersihkan untuk menghemat ruang penyimpanan. Data absensi Anda di SQLite dan Awan tetap aman.',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.storage, color: Colors.blueAccent, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Perkiraan Ukuran Cache:',
+                            style: TextStyle(fontSize: 12, color: Colors.black54),
+                          ),
+                          Text(
+                            currentCache,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blueAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Proses ini akan membersihkan:\n'
+                '• Cache memori visual & thumbnail gambar\n'
+                '• File sementara (temporary files) di perangkat\n'
+                '• Cache berkas singgah APK\n\n'
+                'Semua data absensi lokal SQLite & akun cloud Anda tetap aman 100%.',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+            ],
           ),
         ),
         actions: [
@@ -356,10 +413,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Batal'),
           ),
-          ElevatedButton(
+          ElevatedButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
-            child: const Text('Bersihkan', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.auto_delete_outlined, size: 18),
+            label: const Text('Mulai Bersihkan'),
           ),
         ],
       ),
@@ -367,17 +428,73 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
     if (confirm != true) return;
 
-    PaintingBinding.instance.imageCache.clear();
-    PaintingBinding.instance.imageCache.clearLiveImages();
-
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Cache aplikasi berhasil dibersihkan!'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        content: Padding(
+          padding: EdgeInsets.symmetric(vertical: 16.0),
+          child: Row(
+            children: [
+              CircularProgressIndicator(color: Colors.blueAccent),
+              SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  'Sedang membersihkan cache perangkat & APK...',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
+
+    final cleanResult = await AppCacheHelper.cleanAllCache();
+    final newCacheSize = await AppCacheHelper.getFormattedCacheSize();
+
+    if (mounted) {
+      Navigator.pop(context); // Tutup dialog loading
+      setState(() {
+        _cacheSizeFormatted = newCacheSize;
+      });
+
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Expanded(child: Text('Pembersihan Selesai')),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                cleanResult.message,
+                style: const TextStyle(fontSize: 14, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Sisa cache saat ini: $newCacheSize',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Tutup'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Future<void> _openDeviceNotificationSettings() async {
@@ -1196,12 +1313,12 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                       ),
                       const Divider(height: 1),
 
-                      // BERSIHKAN CACHE APLIKASI
+                      // BERSIHKAN CACHE HP & APK
                       ListTile(
                         leading: const Icon(Icons.cleaning_services_outlined, color: Colors.orange),
-                        title: const Text('Bersihkan Cache Aplikasi'),
-                        subtitle: const Text(
-                          'Hapus cache memori visual sementara ponsel',
+                        title: const Text('Pembersih Cache HP & APK'),
+                        subtitle: Text(
+                          'Bersihkan file temporary, cache gambar & berkas APK ($_cacheSizeFormatted)',
                           overflow: TextOverflow.ellipsis,
                         ),
                         trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
@@ -1305,6 +1422,60 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         ),
                         onTap: _requestNotificationPermission,
                       ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.inbox_rounded,
+                            color: Colors.blueAccent,
+                            size: 20,
+                          ),
+                        ),
+                        title: const Text(
+                          'Pusat & Riwayat Notifikasi',
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                        ),
+                        subtitle: const Text(
+                          'Buka kotak masuk notifikasi dan riwayat lengkap (seperti YouTube)',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ValueListenableBuilder<int>(
+                              valueListenable: AppNotificationHelper.unreadCountNotifier,
+                              builder: (context, count, _) {
+                                if (count <= 0) return const SizedBox.shrink();
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                  margin: const EdgeInsets.only(right: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.redAccent,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    '$count baru',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey),
+                          ],
+                        ),
+                        onTap: () {
+                          NotificationCenterScreen.show(context);
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -1375,7 +1546,7 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                           ),
                         ),
                         title: const Text('Absensiku'),
-                        subtitle: const Text('Versi 1.0.0 (Versi Awal)'),
+                        subtitle: const Text('Versi 1.0.0 • by Muhammad Faiz Aldo Firmansyah'),
                       ),
                     ],
                   ),

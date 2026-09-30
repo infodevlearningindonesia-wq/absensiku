@@ -8,6 +8,7 @@ import 'package:absensiku/services/notification_helper.dart';
 import 'package:absensiku/services/pref_helper.dart';
 import 'package:absensiku/views/auth/login_screen.dart';
 import 'package:absensiku/views/auth/register_screen.dart';
+import 'package:absensiku/views/users/notification_center_screen.dart';
 import 'package:absensiku/views/users/settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -97,16 +98,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Pilih foto dari Kamera atau Galeri
+  // Pilih foto dari Kamera atau Galeri & Auto-save ke Cloud API
   Future<void> _pickImage(ImageSource source, {StateSetter? modalSetState}) async {
-    final isOnline = await NetworkHelper.hasInternetConnection();
-    if (!isOnline) {
-      if (mounted) {
-        NetworkHelper.showOfflineDialog(context, featureName: 'Ubah Foto Profil');
-      }
-      return;
-    }
-
     try {
       final picker = ImagePicker();
       final picked = await picker.pickImage(
@@ -118,6 +111,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (picked != null) {
         final path = picked.path;
+        
+        // 1. Simpan ke local preference & update UI segera
         await PrefHelper.setUserPhoto(path);
 
         if (_userId != null) {
@@ -129,11 +124,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
         }
 
-        // 3. Unggah foto profil ke Server API
-        try {
-          await AppApiService.uploadProfilePhotoToApi(path);
-        } catch (_) {}
-
         if (!mounted) return;
         setState(() {
           _userPhotoPath = path;
@@ -142,12 +132,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
           modalSetState(() {});
         }
 
+        // 2. Auto-save / Upload langsung ke Server Cloud API
+        bool syncedToCloud = false;
+        try {
+          final isOnline = await NetworkHelper.hasInternetConnection();
+          if (isOnline) {
+            final result = await AppApiService.uploadProfilePhotoToApi(path);
+            syncedToCloud = result.success;
+          }
+        } catch (_) {}
+
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Foto profil berhasil diperbarui & tersinkron ke API!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  syncedToCloud ? Icons.cloud_done : Icons.cloud_queue,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    syncedToCloud
+                        ? 'Foto profil tersimpan & tersinkronisasi ke Cloud API!'
+                        : 'Foto profil tersimpan lokal (akan otomatis tersinkron ke Cloud saat online).',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: syncedToCloud ? Colors.green.shade700 : Colors.blueGrey.shade800,
             behavior: SnackBarBehavior.floating,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -433,380 +451,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Dialog / BottomSheet Pusat Notifikasi & Status
-  void _showNotificationCenterBottomSheet() async {
-    final isOnline = await NetworkHelper.hasInternetConnection();
-    final today =
-        '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
-    final allAbsensi = await DatabaseHelper.instance.getAllAbsensi(userId: _userId);
-    final unsynced = await DatabaseHelper.instance.getUnsyncedAbsensi();
-
-    final masukHariIni = await DatabaseHelper.instance.getAbsensiHariIni(
-      tanggal: today,
-      tipe: 'Masuk',
-      userId: _userId,
-    );
-    final pulangHariIni = await DatabaseHelper.instance.getAbsensiHariIni(
-      tanggal: today,
-      tipe: 'Keluar',
-      userId: _userId,
-    );
-
-    if (!mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Handle Bar
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-
-                // Header
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.blueAccent.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.notifications_active, color: Colors.blueAccent, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Pusat Notifikasi & Status',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          Text(
-                            'Status koneksi, sinkronisasi, dan presensi akun',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.grey),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // 1. Kartu Status Jaringan Internet
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: isOnline ? Colors.green.shade50 : Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isOnline ? Colors.green.shade200 : Colors.red.shade200,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isOnline ? Icons.wifi : Icons.wifi_off,
-                        color: isOnline ? Colors.green.shade700 : Colors.red.shade700,
-                        size: 26,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isOnline ? 'Jaringan Online (Aktif)' : 'Mode Offline (Terputus)',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                                color: isOnline ? Colors.green.shade900 : Colors.red.shade900,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              isOnline
-                                  ? 'Profil & data terhubung ke server API'
-                                  : 'Perubahan tersimpan di database lokal',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isOnline ? Colors.green.shade800 : Colors.red.shade800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isOnline ? Colors.green : Colors.red,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          isOnline ? 'ONLINE' : 'OFFLINE',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // 2. Kartu Status Presensi Hari Ini
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.today, size: 18, color: Colors.blueAccent),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Status Kehadiran Hari Ini ($today)',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Icon(
-                                  masukHariIni != null ? Icons.check_circle : Icons.radio_button_unchecked,
-                                  color: masukHariIni != null ? Colors.green : Colors.grey,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    masukHariIni != null
-                                        ? 'Masuk: ${masukHariIni['waktu']} WIB'
-                                        : 'Masuk: Belum',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: masukHariIni != null ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Icon(
-                                  pulangHariIni != null ? Icons.check_circle : Icons.radio_button_unchecked,
-                                  color: pulangHariIni != null ? Colors.orange.shade800 : Colors.grey,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    pulangHariIni != null
-                                        ? 'Keluar: ${pulangHariIni['waktu']} WIB'
-                                        : 'Keluar: Belum',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: pulangHariIni != null ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // 3. Kartu Sinkronisasi
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.cloud_sync, color: Colors.blueAccent, size: 22),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          unsynced.isEmpty
-                              ? 'Total ${allAbsensi.length} data presensi telah tersimpan aman.'
-                              : '${unsynced.length} data sedang menunggu antrean sinkronisasi.',
-                          style: const TextStyle(fontSize: 12, color: Colors.black87),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Tombol Aksi: Uji Notifikasi
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: () {
-                          AppNotificationHelper.showNotification(
-                            title: 'Uji Notifikasi Profil',
-                            message: 'Layanan notifikasi perangkat & bilah status berjalan lancar!',
-                            icon: Icons.notifications_active_rounded,
-                            backgroundColor: const Color(0xFF1E293B),
-                            iconColor: Colors.amberAccent,
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Notifikasi uji berhasil dikirim!')),
-                          );
-                        },
-                        icon: const Icon(Icons.notifications_active_outlined, size: 18),
-                        label: const Text('Uji Notifikasi'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                          ).then((_) => _loadProfileData());
-                        },
-                        icon: const Icon(Icons.settings, size: 18),
-                        label: const Text('Pengaturan'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  // Dialog / BottomSheet Pusat Notifikasi & Status (Riwayat Notifikasi Lengkap seperti YouTube)
+  void _showNotificationCenterBottomSheet() {
+    NotificationCenterScreen.show(context);
   }
 
   // Dialog / BottomSheet Pemilihan Sumber Foto (Kamera / Galeri / Hapus)
   void _showImagePickerOptions({StateSetter? modalSetState}) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 12.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 44,
+                  height: 5,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(3),
+                  ),
                 ),
-              ),
-              Text(
-                'Pilih Foto Profil',
-                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.blueAccent,
-                  child: Icon(Icons.camera_alt, color: Colors.white),
+                Text(
+                  'Pilih Foto Profil',
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                 ),
-                title: const Text('Ambil Foto dari Kamera'),
-                subtitle: const Text('Gunakan kamera perangkat secara langsung'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.camera, modalSetState: modalSetState);
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Colors.purpleAccent,
-                  child: Icon(Icons.photo_library, color: Colors.white),
-                ),
-                title: const Text('Pilih dari Galeri Foto'),
-                subtitle: const Text('Pilih gambar tersimpan di galeri HP'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickImage(ImageSource.gallery, modalSetState: modalSetState);
-                },
-              ),
-              if (_userPhotoPath != null && _userPhotoPath!.isNotEmpty)
+                const SizedBox(height: 12),
                 ListTile(
                   leading: const CircleAvatar(
-                    backgroundColor: Colors.redAccent,
-                    child: Icon(Icons.delete_outline, color: Colors.white),
+                    backgroundColor: Colors.blueAccent,
+                    child: Icon(Icons.camera_alt, color: Colors.white),
                   ),
-                  title: const Text('Hapus Foto Profil'),
-                  subtitle: const Text('Kembalikan ke avatar inisial default'),
+                  title: const Text('Ambil Foto dari Kamera'),
+                  subtitle: const Text('Gunakan kamera perangkat secara langsung'),
                   onTap: () {
                     Navigator.pop(ctx);
-                    _hapusFotoProfil(modalSetState: modalSetState);
+                    _pickImage(ImageSource.camera, modalSetState: modalSetState);
                   },
                 ),
-            ],
+                ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Colors.purpleAccent,
+                    child: Icon(Icons.photo_library, color: Colors.white),
+                  ),
+                  title: const Text('Pilih dari Galeri Foto'),
+                  subtitle: const Text('Pilih gambar tersimpan di galeri HP'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickImage(ImageSource.gallery, modalSetState: modalSetState);
+                  },
+                ),
+                if (_userPhotoPath != null && _userPhotoPath!.isNotEmpty)
+                  ListTile(
+                    leading: const CircleAvatar(
+                      backgroundColor: Colors.redAccent,
+                      child: Icon(Icons.delete_outline, color: Colors.white),
+                    ),
+                    title: const Text('Hapus Foto Profil'),
+                    subtitle: const Text('Kembalikan ke avatar inisial default'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _hapusFotoProfil(modalSetState: modalSetState);
+                    },
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -850,6 +573,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (confirm != true) return;
 
+    AppNotificationHelper.hasShownWelcomeSession = false;
     await PrefHelper.clearSession();
 
     if (!mounted) return;
@@ -882,55 +606,79 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      backgroundColor: Colors.transparent,
+      useSafeArea: true,
       builder: (ctx) {
-        return StatefulBuilder(
-          builder: (modalContext, setModalState) {
-            final hasPhoto = _userPhotoPath != null &&
-                _userPhotoPath!.isNotEmpty &&
-                File(_userPhotoPath!).existsSync();
+        return DraggableScrollableSheet(
+          initialChildSize: 0.90,
+          minChildSize: 0.50,
+          maxChildSize: 0.96,
+          expand: false,
+          builder: (modalContext, scrollController) {
+            return StatefulBuilder(
+              builder: (sbContext, setModalState) {
+                final hasPhoto = _userPhotoPath != null &&
+                    _userPhotoPath!.isNotEmpty &&
+                    File(_userPhotoPath!).existsSync();
 
-            return Padding(
-              padding: EdgeInsets.only(
-                top: 20,
-                left: 20,
-                right: 20,
-                bottom: MediaQuery.of(modalContext).viewInsets.bottom + 24,
-              ),
-              child: Form(
-                key: formKey,
-                child: SingleChildScrollView(
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Drag Handle Bar
                       Center(
                         child: Container(
-                          width: 40,
-                          height: 4,
-                          margin: const EdgeInsets.only(bottom: 16),
+                          width: 48,
+                          height: 5,
+                          margin: const EdgeInsets.only(top: 12, bottom: 8),
                           decoration: BoxDecoration(
                             color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(2),
+                            borderRadius: BorderRadius.circular(3),
                           ),
                         ),
                       ),
-                      Row(
-                        children: [
-                          const Icon(Icons.manage_accounts, color: Colors.blueAccent),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Edit Formulir & Foto Profil',
-                              style: Theme.of(modalContext).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                      // Header Title Bar with Close Button
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.manage_accounts, color: Colors.blueAccent),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Edit Formulir & Foto Profil',
+                                style: Theme.of(sbContext).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 17,
+                                    ),
+                              ),
                             ),
-                          ),
-                        ],
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.grey, size: 22),
+                              onPressed: () => Navigator.pop(ctx),
+                            ),
+                          ],
+                        ),
                       ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: Form(
+                          key: formKey,
+                          child: SingleChildScrollView(
+                            controller: scrollController,
+                            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                            padding: EdgeInsets.only(
+                              top: 16,
+                              left: 20,
+                              right: 20,
+                              bottom: MediaQuery.of(sbContext).viewInsets.bottom + 32,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
                       const SizedBox(height: 16),
 
                       // EDIT FOTO PROFIL PREVIEW & BUTTON
@@ -1240,12 +988,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-            );
-          },
-        );
-      },
-    );
-  }
+            ),
+          ],
+        ),
+      );
+    },
+  );
+},
+);
+},
+);
+}
 
   @override
   Widget build(BuildContext context) {
@@ -1258,10 +1011,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text('Profil Pengguna'),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: 'Pusat Notifikasi & Status',
-            onPressed: _showNotificationCenterBottomSheet,
+          ValueListenableBuilder<int>(
+            valueListenable: AppNotificationHelper.unreadCountNotifier,
+            builder: (context, unreadCount, _) {
+              return IconButton(
+                icon: Badge(
+                  isLabelVisible: unreadCount > 0,
+                  label: Text(
+                    unreadCount > 99 ? '99+' : '$unreadCount',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  backgroundColor: Colors.redAccent,
+                  child: const Icon(Icons.notifications_outlined),
+                ),
+                tooltip: 'Pusat Notifikasi & Riwayat',
+                onPressed: _showNotificationCenterBottomSheet,
+              );
+            },
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
@@ -1647,8 +1417,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 fit: BoxFit.cover,
                               ),
                             ),
-                            title: const Text('Versi Aplikasi'),
-                            subtitle: const Text('Absensiku v1.0.0+1'),
+                            title: const Text('Versi Aplikasi & Pengembang'),
+                            subtitle: const Text('Absensiku v1.0.0 • by Muhammad Faiz Aldo Firmansyah'),
                           ),
                         ],
                       ),

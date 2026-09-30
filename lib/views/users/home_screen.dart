@@ -13,7 +13,9 @@ import 'package:absensiku/services/notification_helper.dart';
 import 'package:absensiku/services/pref_helper.dart';
 import 'package:absensiku/views/auth/login_screen.dart';
 import 'package:absensiku/views/users/daftar_hadir_screen.dart';
+import 'package:absensiku/views/users/form_izin_screen.dart';
 import 'package:absensiku/views/users/maps_screen.dart';
+import 'package:absensiku/views/users/notification_center_screen.dart';
 import 'package:absensiku/views/users/profile_screen.dart';
 import 'package:absensiku/views/users/settings_screen.dart';
 
@@ -103,6 +105,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _userId = id;
       _userPhotoPath = photo;
     });
+
+    // Tampilkan 1 notifikasi resmi saat masuk aplikasi (Welcome, Versi & Info App)
+    AppNotificationHelper.showWelcomeAppNotification(userName: name);
   }
 
   // 2. Ambil tanggal hari ini dalam format YYYY-MM-DD
@@ -628,9 +633,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // 4. Jalankan sinkronisasi background dua arah
     _autoSyncAll();
 
-    // 5. Tampilkan notifikasi & alert dialog konfirmasi sukses
+    // 5. Alert dialog konfirmasi sukses presensi
     if (id > 0 && mounted) {
-      AppNotificationHelper.showPresensiSuccess(tipe, waktu);
       final isMasuk = tipe.toLowerCase() == 'masuk';
       showDialog(
         context: context,
@@ -1129,6 +1133,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (confirm != true) return;
 
+    AppNotificationHelper.hasShownWelcomeSession = false;
     await PrefHelper.clearSession();
 
     if (!mounted) return;
@@ -1140,321 +1145,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Dialog / BottomSheet Pusat Notifikasi & Status
-  void _showNotificationCenterBottomSheet() async {
-    final isOnline = await NetworkHelper.hasInternetConnection();
-    final today = _getTodayString();
-    final totalRiwayat = _riwayatAbsensi.length;
-    final unsynced = await DatabaseHelper.instance.getUnsyncedAbsensi();
-
-    if (!mounted) return;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Handle Bar
-                Center(
-                  child: Container(
-                    width: 44,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-
-                // Header
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.blueAccent.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.notifications_active, color: Colors.blueAccent, size: 24),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Pusat Notifikasi & Status',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                          ),
-                          Text(
-                            'Status koneksi, sinkronisasi, dan presensi terkini',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.grey),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                // 1. Kartu Status Jaringan Internet
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: isOnline
-                        ? Colors.green.shade50
-                        : Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isOnline ? Colors.green.shade200 : Colors.red.shade200,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isOnline ? Icons.wifi : Icons.wifi_off,
-                        color: isOnline ? Colors.green.shade700 : Colors.red.shade700,
-                        size: 26,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isOnline ? 'Jaringan Online (Aktif)' : 'Mode Offline (Terputus)',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                                color: isOnline ? Colors.green.shade900 : Colors.red.shade900,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              isOnline
-                                  ? 'Terhubung ke server API & Awan'
-                                  : 'Data tersimpan di perangkat lokal SQLite',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isOnline ? Colors.green.shade800 : Colors.red.shade800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isOnline ? Colors.green : Colors.red,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          isOnline ? 'ONLINE' : 'OFFLINE',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // 2. Kartu Aktivitas Presensi Hari Ini
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.today, size: 18, color: Colors.blueAccent),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Aktivitas Hari Ini ($today)',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _absenMasukHariIni != null
-                                      ? Icons.check_circle
-                                      : Icons.radio_button_unchecked,
-                                  color: _absenMasukHariIni != null
-                                      ? Colors.green
-                                      : Colors.grey,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    _absenMasukHariIni != null
-                                        ? 'Masuk: ${_absenMasukHariIni!['waktu']} WIB'
-                                        : 'Masuk: Belum',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: _absenMasukHariIni != null
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _absenPulangHariIni != null
-                                      ? Icons.check_circle
-                                      : Icons.radio_button_unchecked,
-                                  color: _absenPulangHariIni != null
-                                      ? Colors.orange.shade800
-                                      : Colors.grey,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    _absenPulangHariIni != null
-                                        ? 'Keluar: ${_absenPulangHariIni!['waktu']} WIB'
-                                        : 'Keluar: Belum',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: _absenPulangHariIni != null
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // 3. Kartu Sinkronisasi & Ringkasan Data
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.cloud_sync, color: Colors.blueAccent, size: 22),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          unsynced.isEmpty
-                              ? 'Seluruh $totalRiwayat data presensi tersinkron dengan Awan.'
-                              : '${unsynced.length} data tersimpan di lokal (menunggu sinkronisasi awan).',
-                          style: const TextStyle(fontSize: 12, color: Colors.black87),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Tombol Aksi: Uji Notifikasi Perangkat & Pengaturan
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () {
-                          AppNotificationHelper.showNotification(
-                            title: 'Uji Notifikasi Absensiku',
-                            message: 'Layanan notifikasi perangkat & bilah status berjalan lancar!',
-                            icon: Icons.notifications_active_rounded,
-                            backgroundColor: const Color(0xFF1E293B),
-                            iconColor: Colors.amberAccent,
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Notifikasi uji berhasil dikirim!')),
-                          );
-                        },
-                        icon: const Icon(Icons.notifications_active_outlined, size: 18),
-                        label: const Text('Uji Notif'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const SettingsScreen()),
-                          ).then((_) {
-                            _startPeriodicAutoSync();
-                            _loadUserData();
-                            _loadAbsensiFromDb();
-                          });
-                        },
-                        icon: const Icon(Icons.settings, size: 18),
-                        label: const Text('Pengaturan'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  // Dialog / BottomSheet Pusat Notifikasi & Status (Riwayat Notifikasi Lengkap seperti YouTube)
+  void _showNotificationCenterBottomSheet() {
+    NotificationCenterScreen.show(context);
   }
 
   @override
@@ -1500,10 +1193,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_outlined),
-                  tooltip: 'Pusat Notifikasi & Status',
-                  onPressed: _showNotificationCenterBottomSheet,
+                ValueListenableBuilder<int>(
+                  valueListenable: AppNotificationHelper.unreadCountNotifier,
+                  builder: (context, unreadCount, _) {
+                    return IconButton(
+                      icon: Badge(
+                        isLabelVisible: unreadCount > 0,
+                        label: Text(
+                          unreadCount > 99 ? '99+' : '$unreadCount',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        backgroundColor: Colors.redAccent,
+                        child: const Icon(Icons.notifications_outlined),
+                      ),
+                      tooltip: 'Pusat Notifikasi & Riwayat',
+                      onPressed: _showNotificationCenterBottomSheet,
+                    );
+                  },
                 ),
                 IconButton(
                   icon: const Icon(Icons.settings_outlined),
@@ -1939,7 +1649,37 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
-            const SizedBox(height: 16),
+            // Tombol Form Pengajuan Izin / Sakit
+            Padding(
+              padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 8.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final res = await FormIzinScreen.showAsBottomSheet(context);
+                    if (res == true) {
+                      _loadInitialData();
+                    }
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: Colors.blue.shade700, width: 1.2),
+                    foregroundColor: Colors.blue.shade800,
+                    backgroundColor: Colors.blue.shade50.withValues(alpha: 0.5),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: const Icon(Icons.assignment_outlined, size: 18),
+                  label: const Text(
+                    'Form Pengajuan Izin / Sakit',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 14),
 
             // 4. Header Riwayat SQFlite
             Padding(

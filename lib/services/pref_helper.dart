@@ -7,12 +7,15 @@ class PrefHelper {
   static const String _keyUserEmail = 'user_email';
   static const String _keyIsLoggedIn = 'is_logged_in';
 
-  // Simpan data login / session
+  static const String _keyUserCustomEmail = 'user_custom_email';
+
+  // Simpan data login / session dengan proteksi email pengguna
   static Future<void> saveSession({
     required String token,
     int? userId,
     required String name,
     required String email,
+    bool forceEmailOverwrite = false,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyToken, token);
@@ -20,7 +23,28 @@ class PrefHelper {
       await prefs.setInt(_keyUserId, userId);
     }
     await prefs.setString(_keyUserName, name);
-    await prefs.setString(_keyUserEmail, email);
+
+    final cleanEmail = email.trim();
+    final customEmail = prefs.getString(_keyUserCustomEmail);
+    final currentEmail = prefs.getString(_keyUserEmail);
+
+    if (forceEmailOverwrite) {
+      if (cleanEmail.isNotEmpty) {
+        await prefs.setString(_keyUserEmail, cleanEmail);
+        await prefs.setString(_keyUserCustomEmail, cleanEmail);
+      }
+    } else {
+      // Pertahankan email kustom pengguna jika ada, jangan timpa dengan default production API
+      if (customEmail != null && customEmail.isNotEmpty) {
+        await prefs.setString(_keyUserEmail, customEmail);
+      } else if (cleanEmail.isNotEmpty) {
+        await prefs.setString(_keyUserEmail, cleanEmail);
+        await prefs.setString(_keyUserCustomEmail, cleanEmail);
+      } else if (currentEmail == null || currentEmail.isEmpty) {
+        await prefs.setString(_keyUserEmail, cleanEmail);
+      }
+    }
+
     await prefs.setBool(_keyIsLoggedIn, true);
   }
 
@@ -36,16 +60,21 @@ class PrefHelper {
     return prefs.getString(_keyUserName) ?? 'Pengguna';
   }
 
-  // Ambil Email Pengguna
+  // Ambil Email Pengguna (memprioritaskan email pengguna yang disimpan)
   static Future<String?> getUserEmail() async {
     final prefs = await SharedPreferences.getInstance();
+    final custom = prefs.getString(_keyUserCustomEmail);
+    if (custom != null && custom.isNotEmpty) return custom;
     return prefs.getString(_keyUserEmail);
   }
 
-  // Simpan / Perbarui Email Pengguna
+  // Simpan / Perbarui Email Pengguna secara permanen
   static Future<void> setUserEmail(String email) async {
+    final clean = email.trim();
+    if (clean.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyUserEmail, email.trim());
+    await prefs.setString(_keyUserEmail, clean);
+    await prefs.setString(_keyUserCustomEmail, clean);
   }
 
   // Ambil User ID
@@ -124,7 +153,11 @@ class PrefHelper {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyUserName, name);
-    await prefs.setString(_keyUserEmail, email);
+    final cleanEmail = email.trim();
+    if (cleanEmail.isNotEmpty) {
+      await prefs.setString(_keyUserEmail, cleanEmail);
+      await prefs.setString(_keyUserCustomEmail, cleanEmail);
+    }
     if (phone != null) {
       await prefs.setString(_keyUserPhone, phone);
     }

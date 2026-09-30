@@ -176,6 +176,7 @@ class AppApiService {
               'longitude': lng,
               'address': alamat,
               'keterangan': alamat,
+              'izin': alamat,
               'date': tanggal,
               'time': waktu,
             }
@@ -187,6 +188,7 @@ class AppApiService {
               'longitude': lng,
               'address': alamat,
               'keterangan': alamat,
+              'izin': alamat,
               'date': tanggal,
               'time': waktu,
             };
@@ -267,12 +269,30 @@ class AppApiService {
           );
         }
 
-        // 4. HTTP 422: Validasi ditolak oleh server
-        if (statusCode == 422) {
+        // 4. HTTP 422 / 400: Validasi ditolak atau status izin
+        if (statusCode == 422 || statusCode == 400) {
           String msg = 'Validasi data ditolak server.';
-          if (resData is Map && resData['message'] != null) {
-            msg = resData['message'].toString();
+          String? apiId;
+          if (resData is Map) {
+            if (resData['message'] != null) {
+              msg = resData['message'].toString();
+            }
+            if (resData['data'] is Map && resData['data']['id'] != null) {
+              apiId = resData['data']['id'].toString();
+            }
           }
+
+          // Kasus Khusus: Status izin tidak memerlukan absen keluar -> Dianggap Berhasil & Tersinkron
+          if (msg.toLowerCase().contains('izin tidak memerlukan absen keluar') ||
+              (msg.toLowerCase().contains('izin') && msg.toLowerCase().contains('absen keluar'))) {
+            return SubmitAbsensiResult(
+              success: true,
+              apiId: apiId,
+              message: msg,
+              isAlreadyOnServer: true,
+            );
+          }
+
           return SubmitAbsensiResult(success: false, message: msg);
         }
 
@@ -769,10 +789,30 @@ class AppApiService {
       final pendingResult = await syncAllPendingToApi();
       pendingSynced = pendingResult.syncedCount;
 
-      // 2. Sinkronkan data profil pengguna terbaru dari server API
+      // 2. Auto-save & Sinkronisasi Foto Profil Pengguna ke Cloud API
+      try {
+        final isPhotoSyncOn = await PrefHelper.isAutoPhotoSyncEnabled();
+        if (isPhotoSyncOn) {
+          final localPhoto = await PrefHelper.getUserPhoto();
+          if (localPhoto != null &&
+              localPhoto.isNotEmpty &&
+              !localPhoto.startsWith('http://') &&
+              !localPhoto.startsWith('https://') &&
+              File(localPhoto).existsSync()) {
+            final uploadResult = await uploadProfilePhotoToApi(localPhoto);
+            if (uploadResult.success) {
+              profileSynced = true;
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 3. Sinkronkan data profil pengguna terbaru dari server API
       try {
         final profileData = await getProfileFromApi();
-        profileSynced = profileData != null;
+        if (profileData != null) {
+          profileSynced = true;
+        }
       } catch (_) {}
 
       // 3. Tarik riwayat absensi dari API server dan sinkronkan ke SQLite lokal

@@ -29,17 +29,17 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
 
-    // 1. Controller Animasi Slow Motion (Durasi 4000ms untuk efek masuk sangat halus dan sinematik)
+    // 1. Controller Animasi (Durasi 1000ms agar animasi muncul lebih cepat dan responsif)
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 4000),
+      duration: const Duration(milliseconds: 1000),
     );
 
-    // Animasi Scale Logo (Slow motion zoom in halus)
-    _logoScaleAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
+    // Animasi Scale Logo (Zoom in cepat dan halus)
+    _logoScaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.55, curve: Curves.easeOutCubic),
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
       ),
     );
 
@@ -47,29 +47,29 @@ class _SplashScreenState extends State<SplashScreen>
     _logoFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.0, 0.45, curve: Curves.easeIn),
+        curve: const Interval(0.0, 0.4, curve: Curves.easeIn),
       ),
     );
 
     // Animasi Denyut / Glow Halo di Belakang Logo
-    _pulseAnimation = Tween<double>(begin: 12.0, end: 30.0).animate(
+    _pulseAnimation = Tween<double>(begin: 12.0, end: 28.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.35, 1.0, curve: Curves.easeInOut),
+        curve: const Interval(0.3, 1.0, curve: Curves.easeInOut),
       ),
     );
 
     // Animasi Slide & Fade Judul "Absensiku"
-    _titleSlideAnimation = Tween<double>(begin: 24.0, end: 0.0).animate(
+    _titleSlideAnimation = Tween<double>(begin: 20.0, end: 0.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.25, 0.65, curve: Curves.easeOutQuart),
+        curve: const Interval(0.2, 0.6, curve: Curves.easeOutCubic),
       ),
     );
     _titleFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.25, 0.60, curve: Curves.easeIn),
+        curve: const Interval(0.2, 0.5, curve: Curves.easeIn),
       ),
     );
 
@@ -77,7 +77,7 @@ class _SplashScreenState extends State<SplashScreen>
     _subtitleFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.40, 0.75, curve: Curves.easeIn),
+        curve: const Interval(0.35, 0.7, curve: Curves.easeIn),
       ),
     );
 
@@ -85,14 +85,14 @@ class _SplashScreenState extends State<SplashScreen>
     _loadingFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
-        curve: const Interval(0.50, 0.80, curve: Curves.easeIn),
+        curve: const Interval(0.45, 0.75, curve: Curves.easeIn),
       ),
     );
 
-    // Jalankan animasi slow motion
+    // Jalankan animasi
     _controller.forward();
 
-    // 2. Timer Durasi Splash & Loading Tepat 6 Detik
+    // 2. Timer Durasi Splash & Loading Tepat 3 Detik
     _startNavigationTimer();
   }
 
@@ -105,8 +105,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _startNavigationTimer() {
     _navigationTimer?.cancel();
-    // Menahan tampilan splash & loading selama tepat 6 detik sebelum pindah
-    _navigationTimer = Timer(const Duration(seconds: 6), () {
+    // Menahan tampilan splash & loading selama 5 detik agar informasi dan kredit pengembang terbaca jelas
+    _navigationTimer = Timer(const Duration(seconds: 5), () {
       if (mounted) {
         _checkSessionAndNavigate();
       }
@@ -124,29 +124,29 @@ class _SplashScreenState extends State<SplashScreen>
         AppApiService.autoSyncAllData();
 
         if (!mounted) return;
-        _navigateWithSlowMotionTransition(const HomeScreen());
+        _navigateWithFastTransition(const HomeScreen());
       } else {
         if (!mounted) return;
-        _navigateWithSlowMotionTransition(const LoginScreen());
+        _navigateWithFastTransition(const LoginScreen());
       }
     } catch (_) {
       if (!mounted) return;
-      _navigateWithSlowMotionTransition(const LoginScreen());
+      _navigateWithFastTransition(const LoginScreen());
     }
   }
 
-  // Navigasi dengan transisi Fade Slow Motion yang sangat halus (1200ms)
-  void _navigateWithSlowMotionTransition(Widget targetScreen) {
+  // Navigasi dengan transisi Fade yang cepat & responsif (450ms)
+  void _navigateWithFastTransition(Widget targetScreen) {
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 1200),
+        transitionDuration: const Duration(milliseconds: 450),
         pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
             opacity: CurvedAnimation(
               parent: animation,
-              curve: Curves.easeInOutCubic,
+              curve: Curves.easeInOut,
             ),
             child: child,
           );
@@ -280,18 +280,36 @@ class _SplashScreenState extends State<SplashScreen>
 
                               const Spacer(flex: 3),
 
-                              // 5. FOOTER VERSI
+                              // 5. FOOTER VERSI DAN INFORMASI PENGEMBANG (UI BY)
                               Opacity(
                                 opacity: _loadingFadeAnimation.value,
                                 child: Padding(
                                   padding: const EdgeInsets.only(bottom: 24.0, top: 16.0),
-                                  child: Text(
-                                    'Versi 1.0.0',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[400],
-                                      letterSpacing: 0.5,
-                                    ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Versi 1.0.0 • Absensiku',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey[500],
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Developed by Muhammad Faiz Aldo Firmansyah | Method By Ashabibie | UI By Hardi | Logo By Canva Design | Maps By Google Maps | Source API By OpenWeatherMap | PPKD Jakarta Utara',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.blueAccent.shade200,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
