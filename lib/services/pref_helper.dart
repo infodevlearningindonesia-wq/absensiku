@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PrefHelper {
@@ -9,26 +10,35 @@ class PrefHelper {
 
   static const String _keyUserCustomEmail = 'user_custom_email';
 
-  // Simpan data login / session dengan proteksi email pengguna
+  // Simpan data login / session dengan proteksi & isolasi profil per akun pengguna
   static Future<void> saveSession({
     required String token,
     int? userId,
     required String name,
     required String email,
+    String? phone,
+    String? alamat,
+    String? photoPath,
+    String? role,
     bool forceEmailOverwrite = false,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyToken, token);
     if (userId != null) {
       await prefs.setInt(_keyUserId, userId);
+    } else {
+      await prefs.remove(_keyUserId);
     }
     await prefs.setString(_keyUserName, name);
 
     final cleanEmail = email.trim();
     final customEmail = prefs.getString(_keyUserCustomEmail);
-    final currentEmail = prefs.getString(_keyUserEmail);
+    final previousEmail = prefs.getString(_keyUserEmail);
+    final isDifferentUser = previousEmail != null &&
+        previousEmail.isNotEmpty &&
+        previousEmail.toLowerCase() != cleanEmail.toLowerCase();
 
-    if (forceEmailOverwrite) {
+    if (forceEmailOverwrite || isDifferentUser) {
       if (cleanEmail.isNotEmpty) {
         await prefs.setString(_keyUserEmail, cleanEmail);
         await prefs.setString(_keyUserCustomEmail, cleanEmail);
@@ -40,9 +50,58 @@ class PrefHelper {
       } else if (cleanEmail.isNotEmpty) {
         await prefs.setString(_keyUserEmail, cleanEmail);
         await prefs.setString(_keyUserCustomEmail, cleanEmail);
-      } else if (currentEmail == null || currentEmail.isEmpty) {
+      } else if (previousEmail == null || previousEmail.isEmpty) {
         await prefs.setString(_keyUserEmail, cleanEmail);
       }
+    }
+
+    // Isolasi Profil: Phone, Alamat, Foto hanya milik akun yang sedang login
+    if (phone != null && phone.isNotEmpty) {
+      await prefs.setString(_keyUserPhone, phone);
+    } else {
+      await prefs.remove(_keyUserPhone);
+    }
+
+    if (alamat != null && alamat.isNotEmpty) {
+      await prefs.setString(_keyUserAlamat, alamat);
+    } else {
+      await prefs.remove(_keyUserAlamat);
+    }
+
+    if (photoPath != null && photoPath.isNotEmpty) {
+      await prefs.setString(_keyUserPhoto, photoPath);
+    } else {
+      await prefs.remove(_keyUserPhoto);
+    }
+
+    // Simpan ke cache scoped per email
+    if (cleanEmail.isNotEmpty) {
+      final safeKey = cleanEmail.toLowerCase();
+      await prefs.setString('user_name_$safeKey', name);
+      if (phone != null && phone.isNotEmpty) {
+        await prefs.setString('user_phone_$safeKey', phone);
+      } else {
+        await prefs.remove('user_phone_$safeKey');
+      }
+      if (alamat != null && alamat.isNotEmpty) {
+        await prefs.setString('user_alamat_$safeKey', alamat);
+      } else {
+        await prefs.remove('user_alamat_$safeKey');
+      }
+      if (photoPath != null && photoPath.isNotEmpty) {
+        await prefs.setString('user_photo_$safeKey', photoPath);
+      } else {
+        await prefs.remove('user_photo_$safeKey');
+      }
+    }
+
+    // Simpan Role Pengguna ('admin' / 'user')
+    if (role != null && role.isNotEmpty) {
+      await prefs.setString(_keyUserRole, role.toLowerCase().trim());
+    } else if (cleanEmail.toLowerCase().contains('admin') || name.toLowerCase().contains('admin')) {
+      await prefs.setString(_keyUserRole, 'admin');
+    } else {
+      await prefs.setString(_keyUserRole, 'user');
     }
 
     await prefs.setBool(_keyIsLoggedIn, true);
@@ -58,6 +117,12 @@ class PrefHelper {
   static Future<String> getUserName() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyUserName) ?? 'Pengguna';
+  }
+
+  // Simpan / Perbarui Nama Pengguna
+  static Future<void> setUserName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyUserName, name.trim());
   }
 
   // Ambil Email Pengguna (memprioritaskan email pengguna yang disimpan)
@@ -89,6 +154,32 @@ class PrefHelper {
     final token = prefs.getString(_keyToken);
     final isLogged = prefs.getBool(_keyIsLoggedIn) ?? false;
     return isLogged && token != null && token.isNotEmpty;
+  }
+
+  static const String _keyUserRole = 'user_role';
+
+  // Simpan / Perbarui Role Pengguna ('admin' / 'user')
+  static Future<void> setUserRole(String role) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyUserRole, role.toLowerCase().trim());
+  }
+
+  // Ambil Role Pengguna ('admin' / 'user')
+  static Future<String> getUserRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    final role = prefs.getString(_keyUserRole);
+    if (role != null && role.isNotEmpty) return role.toLowerCase().trim();
+    final email = await getUserEmail();
+    if (email != null && email.toLowerCase().contains('admin')) return 'admin';
+    final name = await getUserName();
+    if (name.toLowerCase().contains('admin')) return 'admin';
+    return 'user';
+  }
+
+  // Cek apakah akun yang sedang aktif adalah Administrator
+  static Future<bool> isAdmin() async {
+    final role = await getUserRole();
+    return role == 'admin';
   }
 
   static const String _keyUserPhone = 'user_phone';
@@ -159,16 +250,51 @@ class PrefHelper {
       await prefs.setString(_keyUserCustomEmail, cleanEmail);
     }
     if (phone != null) {
-      await prefs.setString(_keyUserPhone, phone);
+      if (phone.isEmpty) {
+        await prefs.remove(_keyUserPhone);
+      } else {
+        await prefs.setString(_keyUserPhone, phone);
+      }
     }
     if (alamat != null) {
-      await prefs.setString(_keyUserAlamat, alamat);
+      if (alamat.isEmpty) {
+        await prefs.remove(_keyUserAlamat);
+      } else {
+        await prefs.setString(_keyUserAlamat, alamat);
+      }
     }
     if (photoPath != null) {
       if (photoPath.isEmpty) {
         await prefs.remove(_keyUserPhoto);
       } else {
         await prefs.setString(_keyUserPhoto, photoPath);
+      }
+    }
+
+    // Cache scoped per user
+    if (cleanEmail.isNotEmpty) {
+      final safeKey = cleanEmail.toLowerCase();
+      await prefs.setString('user_name_$safeKey', name);
+      if (phone != null) {
+        if (phone.isEmpty) {
+          await prefs.remove('user_phone_$safeKey');
+        } else {
+          await prefs.setString('user_phone_$safeKey', phone);
+        }
+      }
+      if (alamat != null) {
+        if (alamat.isEmpty) {
+          await prefs.remove('user_alamat_$safeKey');
+        } else {
+          await prefs.setString('user_alamat_$safeKey', alamat);
+        }
+      }
+      if (photoPath != null) {
+        if (photoPath.isEmpty) {
+          await prefs.remove('user_photo_$safeKey');
+        } else {
+          await prefs.setString('user_photo_$safeKey', photoPath);
+        }
       }
     }
   }
@@ -280,6 +406,71 @@ class PrefHelper {
   static Future<void> setStorageTarget(String target) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyStorageTarget, target);
+  }
+
+  // --- OFFLINE DATA & QUEUE DALAM SHARED PREFERENCES ---
+  static const String _keyOfflineAbsensiList = 'offline_absensi_list';
+  static const String _keyOfflineProfilePending = 'offline_profile_pending';
+
+  // Simpan data absensi offline ke SharedPreferences
+  static Future<void> saveOfflineAbsensi(Map<String, dynamic> item) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyOfflineAbsensiList);
+    List<dynamic> list = [];
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        list = jsonDecode(raw) as List<dynamic>;
+      } catch (_) {}
+    }
+
+    final entry = Map<String, dynamic>.from(item);
+    entry['saved_to_prefs_at'] = DateTime.now().toIso8601String();
+
+    list.add(entry);
+    await prefs.setString(_keyOfflineAbsensiList, jsonEncode(list));
+  }
+
+  // Ambil daftar absensi offline dari SharedPreferences
+  static Future<List<Map<String, dynamic>>> getOfflineAbsensiList() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyOfflineAbsensiList);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final list = jsonDecode(raw) as List<dynamic>;
+      return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // Bersihkan data absensi offline dari SharedPreferences setelah berhasil tersimpan di API
+  static Future<void> clearOfflineAbsensiList() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyOfflineAbsensiList);
+  }
+
+  // Simpan data update profil offline yang tertunda ke SharedPreferences
+  static Future<void> setPendingProfileUpdate(Map<String, dynamic> data) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyOfflineProfilePending, jsonEncode(data));
+  }
+
+  // Ambil data update profil offline yang tertunda dari SharedPreferences
+  static Future<Map<String, dynamic>?> getPendingProfileUpdate() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyOfflineProfilePending);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Hapus data update profil offline yang tertunda
+  static Future<void> clearPendingProfileUpdate() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyOfflineProfilePending);
   }
 
   // Hapus semua session saat logout

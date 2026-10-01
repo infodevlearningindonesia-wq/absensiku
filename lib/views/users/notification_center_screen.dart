@@ -300,9 +300,15 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Notifikasi', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Expanded(
+              child: Text(
+                'Notifikasi',
+                style: TextStyle(fontWeight: FontWeight.bold),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             if (_unreadCount > 0) ...[
               const SizedBox(width: 8),
               Container(
@@ -463,12 +469,21 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.blueAccent : Colors.grey.shade100,
+          color: isSelected ? const Color(0xFF2563EB) : Colors.white,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? Colors.blueAccent : Colors.grey.shade300,
+            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
             width: 1,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF2563EB).withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -476,9 +491,9 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.black87,
+                color: isSelected ? Colors.white : const Color(0xFF475569),
                 fontSize: 13,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
             if (count != null && count > 0) ...[
@@ -488,7 +503,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                 decoration: BoxDecoration(
                   color: isSelected
                       ? Colors.white.withValues(alpha: 0.25)
-                      : (badgeColor ?? Colors.grey.shade300),
+                      : (badgeColor ?? const Color(0xFFE2E8F0)),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
@@ -496,7 +511,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
                   style: TextStyle(
                     color: isSelected
                         ? Colors.white
-                        : (badgeColor != null ? Colors.white : Colors.black87),
+                        : (badgeColor != null ? Colors.white : const Color(0xFF0F172A)),
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
                   ),
@@ -516,11 +531,11 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        color: Colors.redAccent,
+        color: const Color(0xFFEF4444),
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.delete_outline, color: Colors.white, size: 24),
+            Icon(Icons.delete_outline_rounded, color: Colors.white, size: 24),
             SizedBox(width: 6),
             Text(
               'Hapus',
@@ -533,7 +548,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
         _deleteNotification(item);
       },
       child: Material(
-        color: item.isRead ? Colors.transparent : Colors.blue.withValues(alpha: 0.05),
+        color: item.isRead ? Colors.transparent : const Color(0xFFEFF6FF),
         child: InkWell(
           onTap: () => _showNotificationDetail(item),
           child: Padding(
@@ -541,13 +556,13 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Avatar / Icon Notifikasi (seperti thumbnail / icon YouTube)
+                // Avatar / Icon Notifikasi squircle
                 Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: item.color.withValues(alpha: 0.14),
-                    shape: BoxShape.circle,
+                    color: item.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(item.iconData, color: item.color, size: 22),
                 ),

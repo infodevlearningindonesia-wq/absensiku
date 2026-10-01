@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:absensiku/models/notification_item.dart';
+import 'package:absensiku/services/api_services.dart';
 import 'package:absensiku/views/users/notification_center_screen.dart';
 
 class AppNotificationHelper {
@@ -88,35 +89,52 @@ class AppNotificationHelper {
     if (_isListening) return;
     _isListening = true;
 
-    // Pastikan plugin native terinisialisasi
-    initialize();
+    // Menjalankan pemantauan secara aman tanpa menghasilkan uncaught microtask exception
+    _initNetworkListener();
+  }
 
-    // Cek awal status hardware koneksi
-    Connectivity().checkConnectivity().then((results) {
+  static Future<void> _initNetworkListener() async {
+    try {
+      await initialize();
+    } catch (_) {}
+
+    try {
+      final results = await Connectivity().checkConnectivity();
       final isOnline = results.any((r) => r != ConnectivityResult.none);
       _lastOnlineStatus = isOnline;
-    }).catchError((_) {});
+    } catch (_) {}
 
-    // Dengarkan perubahan konektivitas perangkat (Wi-Fi atau Data Seluler dimatikan/dihidupkan)
-    _connectivitySubscription?.cancel();
-    _connectivitySubscription =
-        Connectivity().onConnectivityChanged.listen((results) {
-      final isOnline = results.any((r) => r != ConnectivityResult.none);
+    try {
+      _connectivitySubscription?.cancel();
+      _connectivitySubscription =
+          Connectivity().onConnectivityChanged.listen(
+        (results) {
+          try {
+            final isOnline = results.any((r) => r != ConnectivityResult.none);
 
-      if (_lastOnlineStatus == null) {
-        _lastOnlineStatus = isOnline;
-        return;
-      }
+            if (_lastOnlineStatus == null) {
+              _lastOnlineStatus = isOnline;
+              return;
+            }
 
-      // Hanya beri notifikasi jika terjadi perubahan status nyata dari HP
-      if (isOnline && _lastOnlineStatus == false) {
-        _lastOnlineStatus = true;
-        showOnlineNotification();
-      } else if (!isOnline && _lastOnlineStatus == true) {
-        _lastOnlineStatus = false;
-        showOfflineNotification();
-      }
-    });
+            // Hanya beri notifikasi jika terjadi perubahan status nyata dari HP
+            if (isOnline && _lastOnlineStatus == false) {
+              _lastOnlineStatus = true;
+              showOnlineNotification();
+              // Otomatis sinkronkan semua data offline SharedPreferences & SQLite ke API
+              try {
+                AppApiService.autoSyncAllData();
+              } catch (_) {}
+            } else if (!isOnline && _lastOnlineStatus == true) {
+              _lastOnlineStatus = false;
+              showOfflineNotification();
+            }
+          } catch (_) {}
+        },
+        onError: (_) {},
+        cancelOnError: false,
+      );
+    } catch (_) {}
   }
 
   /// Hentikan pemantauan

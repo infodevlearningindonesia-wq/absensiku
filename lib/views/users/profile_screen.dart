@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:absensiku/views/auth/register_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:absensiku/database/db_helper.dart';
@@ -7,7 +8,6 @@ import 'package:absensiku/services/network_helper.dart';
 import 'package:absensiku/services/notification_helper.dart';
 import 'package:absensiku/services/pref_helper.dart';
 import 'package:absensiku/views/auth/login_screen.dart';
-import 'package:absensiku/views/auth/register_screen.dart';
 import 'package:absensiku/views/users/notification_center_screen.dart';
 import 'package:absensiku/views/users/settings_screen.dart';
 
@@ -39,25 +39,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfileData({bool syncApi = true}) async {
     try {
-      // 1. Baca data dari SharedPreferences dan SQLite
-      final name = await PrefHelper.getUserName();
-      final email = await PrefHelper.getUserEmail();
-      final phone = await PrefHelper.getUserPhone();
-      final alamat = await PrefHelper.getUserAlamat();
-      final photo = await PrefHelper.getUserPhoto();
-      final id = await PrefHelper.getUserId();
+      // 1. Baca data akun yang sedang aktif
+      var name = await PrefHelper.getUserName();
+      var email = await PrefHelper.getUserEmail();
+      var id = await PrefHelper.getUserId();
 
-      List<Map<String, dynamic>> allAbsensi = [];
+      // 2. Ambil data profil spesifik akun ini dari SQLite (agar beda akun beda profil)
+      Map<String, dynamic>? localUser;
+      if (email != null && email.isNotEmpty) {
+        localUser = await DatabaseHelper.instance.getUserByEmail(email);
+      }
+      if (localUser == null && id != null) {
+        localUser = await DatabaseHelper.instance.getUserById(id);
+      }
+
+      String? phone;
+      String? alamat;
+      String? photo;
+
+      if (localUser != null) {
+        name = (localUser[DatabaseHelper.colUserNama] as String?)?.trim() ?? name;
+        email = (localUser[DatabaseHelper.colUserEmail] as String?)?.trim() ?? email;
+        phone = (localUser[DatabaseHelper.colUserPhone] as String?)?.trim();
+        alamat = (localUser[DatabaseHelper.colUserAlamat] as String?)?.trim();
+        photo = (localUser[DatabaseHelper.colUserFoto] as String?)?.trim();
+        id = (localUser[DatabaseHelper.colUserId] as int?) ?? id;
+
+        // Pastikan SharedPreferences tersinkron dengan profil akun ini
+        await PrefHelper.updateUserProfile(
+          name: name,
+          email: email ?? '',
+          phone: phone,
+          alamat: alamat,
+          photoPath: photo,
+        );
+      } else {
+        phone = await PrefHelper.getUserPhone();
+        alamat = await PrefHelper.getUserAlamat();
+        photo = await PrefHelper.getUserPhoto();
+      }
+
+      // 3. Ambil JUMLAH PRESENSI HANYA MILIK AKUN INI
+      // (Jumlah presensi di profil mengikuti jumlah presensi di akun itu)
+      List<Map<String, dynamic>> userAbsensi = [];
       try {
-        allAbsensi = await DatabaseHelper.instance.getAllAbsensi();
+        userAbsensi = await DatabaseHelper.instance.getAllAbsensi(
+          userId: id,
+          userName: name,
+        );
       } catch (_) {}
 
-      final masukCount = allAbsensi.where((item) {
+      final masukCount = userAbsensi.where((item) {
         final t = (item[DatabaseHelper.columnTipe] as String? ?? '').toLowerCase();
+        final k = (item[DatabaseHelper.columnKeterangan] as String? ?? '').toLowerCase();
+        final isIzin = t.contains('izin') ||
+            t.contains('sakit') ||
+            t.contains('cuti') ||
+            t.contains('dinas') ||
+            k.contains('[izin]');
+        if (isIzin) return false;
         return t == 'masuk' || t.contains('in');
       }).length;
-      final pulangCount = allAbsensi.where((item) {
+
+      final pulangCount = userAbsensi.where((item) {
         final t = (item[DatabaseHelper.columnTipe] as String? ?? '').toLowerCase();
+        final k = (item[DatabaseHelper.columnKeterangan] as String? ?? '').toLowerCase();
+        final isIzin = t.contains('izin') ||
+            t.contains('sakit') ||
+            t.contains('cuti') ||
+            t.contains('dinas') ||
+            k.contains('[izin]');
+        if (isIzin) return false;
         return t == 'pulang' || t == 'keluar' || t.contains('out');
       }).length;
 
@@ -69,7 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _userAlamat = alamat;
         _userPhotoPath = photo;
         _userId = id;
-        _totalAbsensi = allAbsensi.length;
+        _totalAbsensi = userAbsensi.length;
         _totalMasuk = masukCount;
         _totalPulang = pulangCount;
         _isLoading = false;
@@ -120,6 +172,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             id: _userId!,
             nama: _userName,
             email: _userEmail,
+            foto: path,
+          );
+        } else {
+          await DatabaseHelper.instance.updateUserProfileSafe(
+            oldEmail: _userEmail,
+            nama: _userName,
+            newEmail: _userEmail,
             foto: path,
           );
         }
@@ -239,6 +298,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         id: _userId!,
         nama: _userName,
         email: _userEmail,
+        foto: '',
+      );
+    } else {
+      await DatabaseHelper.instance.updateUserProfileSafe(
+        oldEmail: _userEmail,
+        nama: _userName,
+        newEmail: _userEmail,
         foto: '',
       );
     }
@@ -1008,7 +1074,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profil Pengguna'),
+        title: const Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Profil Pengguna',
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         centerTitle: true,
         actions: [
           ValueListenableBuilder<int>(
@@ -1080,7 +1157,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   children: [
                     // 1. Header Avatar, Nama, dan Tombol Ubah Foto Langsung
-                    Center(
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
                       child: Column(
                         children: [
                           Stack(
@@ -1088,20 +1179,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               GestureDetector(
                                 onTap: _showPhotoDetailDialog,
-                                child: CircleAvatar(
-                                  radius: 50,
-                                  backgroundColor: Theme.of(context).colorScheme.primary,
-                                  backgroundImage: _getProfileImageProvider(_userPhotoPath),
-                                  child: !hasPhoto
-                                      ? Text(
-                                          _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
-                                          style: const TextStyle(
-                                            fontSize: 42,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : null,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: const Color(0xFF2563EB), width: 2.5),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF2563EB).withValues(alpha: 0.2),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: CircleAvatar(
+                                    radius: 46,
+                                    backgroundColor: const Color(0xFF1E3A8A),
+                                    backgroundImage: _getProfileImageProvider(_userPhotoPath),
+                                    child: !hasPhoto
+                                        ? Text(
+                                            _userName.isNotEmpty ? _userName[0].toUpperCase() : 'U',
+                                            style: const TextStyle(
+                                              fontSize: 38,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : null,
+                                  ),
                                 ),
                               ),
                               // Tombol badge kamera untuk edit foto langsung
@@ -1110,11 +1214,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Container(
                                   padding: const EdgeInsets.all(6),
                                   decoration: BoxDecoration(
-                                    color: Colors.blueAccent,
+                                    color: const Color(0xFF2563EB),
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.white, width: 2),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.2),
+                                        blurRadius: 6,
+                                      ),
+                                    ],
                                   ),
-                                  child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                                  child: const Icon(Icons.camera_alt_rounded, size: 15, color: Colors.white),
                                 ),
                               ),
                             ],
@@ -1125,59 +1235,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             textAlign: TextAlign.center,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 3),
                           Text(
                             _userEmail,
                             textAlign: TextAlign.center,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                  color: Colors.grey[600],
-                                ),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF64748B),
+                            ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 10),
                           Wrap(
                             alignment: WrapAlignment.center,
-                            spacing: 6,
-                            runSpacing: 4,
+                            spacing: 8,
+                            runSpacing: 6,
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.blue.withValues(alpha: 0.1),
+                                  color: const Color(0xFFEFF6FF),
                                   borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: const Color(0xFFBFDBFE)),
                                 ),
-                                child: Text(
-                                  _userId != null ? 'User ID: #$_userId' : 'User Session Aktif',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.blueAccent,
-                                  ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.verified_user_rounded, size: 13, color: Color(0xFF2563EB)),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _userId != null ? 'User ID: #$_userId' : 'User Session Aktif',
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF2563EB),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               if (hasPhoto)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.1),
+                                    color: const Color(0xFFECFDF5),
                                     borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(color: const Color(0xFFA7F3D0)),
                                   ),
                                   child: const Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.check_circle, size: 12, color: Colors.green),
+                                      Icon(Icons.check_circle_rounded, size: 13, color: Color(0xFF059669)),
                                       SizedBox(width: 4),
                                       Text(
-                                        'Foto Ada',
+                                        'Foto Aktif',
                                         style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.green,
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF059669),
                                         ),
                                       ),
                                     ],
@@ -1185,45 +1307,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            alignment: WrapAlignment.center,
-                            spacing: 8,
-                            children: [
-                              OutlinedButton.icon(
-                                onPressed: _showEditProfileBottomSheet,
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                ),
-                                icon: const Icon(Icons.edit, size: 15),
-                                label: const Text('Edit Formulir & Foto'),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: _showImagePickerOptions,
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                ),
-                                icon: const Icon(Icons.add_a_photo, size: 15),
-                                label: const Text('Ganti Foto'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Mini Statistik Kehadiran Pengguna
+                          const SizedBox(height: 14),
                           Row(
                             children: [
-                              _buildStatBox('Total Absen', '$_totalAbsensi', Icons.list_alt, Colors.blueAccent),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _showEditProfileBottomSheet,
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  icon: const Icon(Icons.edit_rounded, size: 15),
+                                  label: const FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text('Edit Profil'),
+                                  ),
+                                ),
+                              ),
                               const SizedBox(width: 8),
-                              _buildStatBox('Masuk', '$_totalMasuk', Icons.login, Colors.green),
-                              const SizedBox(width: 8),
-                              _buildStatBox('Pulang', '$_totalPulang', Icons.logout, Colors.orange),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _showImagePickerOptions,
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 8),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  icon: const Icon(Icons.add_a_photo_rounded, size: 15),
+                                  label: const FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text('Ganti Foto'),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ],
                       ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Mini Statistik Kehadiran Pengguna
+                    Row(
+                      children: [
+                        _buildStatBox('Total Presensi', '$_totalAbsensi', Icons.list_alt_rounded, const Color(0xFF2563EB)),
+                        const SizedBox(width: 8),
+                        _buildStatBox('Absen Masuk', '$_totalMasuk', Icons.login_rounded, const Color(0xFF059669)),
+                        const SizedBox(width: 8),
+                        _buildStatBox('Absen Pulang', '$_totalPulang', Icons.logout_rounded, const Color(0xFFEA580C)),
+                      ],
                     ),
 
                     const SizedBox(height: 20),
@@ -1499,9 +1630,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Text(
           title,
           style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF64748B),
+            letterSpacing: 0.3,
           ),
         ),
       ),
@@ -1511,30 +1643,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatBox(String label, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: 0.25)),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.02),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(height: 6),
             FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 value,
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                   color: color,
                 ),
               ),
             ),
+            const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

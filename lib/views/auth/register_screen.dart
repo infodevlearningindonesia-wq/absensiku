@@ -1,11 +1,7 @@
-import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
-import 'package:absensiku/database/db_helper.dart';
-import 'package:absensiku/models/register_models.dart';
-import 'package:absensiku/services/api_services.dart';
+import 'package:absensiku/models/dio_client.dart';
 import 'package:absensiku/services/dio_system.dart';
-import 'package:absensiku/services/network_helper.dart';
 import 'package:absensiku/views/auth/login_screen.dart';
+import 'package:flutter/material.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -16,591 +12,246 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final _namaController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
-  bool _isLoading = false;
-  bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
+  // Inisialisasi dioClient dengan createDioClient()
+  final dioClient = DioClient(createDioClient());
 
+  // api
+  Future<void> _handleRegister() async {
+    if (_formKey.currentState!.validate()) {
+      _showLoading();
+      try {
+        final response = await RegisterApiService.register(
+          _namaController.text,
+          _emailController.text,
+          _passwordController.text,
+          _confirmPasswordController.text,
+        );
+
+        if (mounted) {
+          Navigator.pop(context); // Tutup dialog loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _handleRegisterSuccess();
+        }
+      } catch (e) {
+        if (mounted) {
+          Navigator.pop(context); // Tutup dialog loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Registrasi gagal: ${e.toString().replaceAll("Exception: ", "")}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  // Loading indicator
+  void _showLoading() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+  }
+
+  // Handle register success
+  void _handleRegisterSuccess() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+    );
+  }
+
+  // reset controller saat dispose
   @override
   void dispose() {
-    _nameController.dispose();
+    _namaController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  // Tampilkan dialog konfirmasi sebelum melakukan registrasi
-  Future<void> _confirmAndRegister() async {
-    // Validasi form dan cek konfirmasi password
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.help_outline, color: Colors.blueAccent),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Konfirmasi Pendaftaran',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Text(
-            'Pastikan data Anda sudah benar:\n\n'
-            '• Nama: ${_nameController.text.trim()}\n'
-            '• Email: ${_emailController.text.trim()}\n\n'
-            'Apakah Anda yakin ingin mendaftar?',
-          ),
-        ),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Batal')),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Ya, Daftarkan')),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      _executeRegister();
-    }
-  }
-
-  Future<void> _executeRegister() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    // 1. Periksa koneksi internet (Wajib online)
-    final hasInternet = await NetworkHelper.hasInternetConnection();
-    if (!hasInternet) {
-      if (mounted) setState(() => _isLoading = false);
-      if (!mounted) return;
-      NetworkHelper.showOfflineDialog(context, featureName: 'Fitur Registrasi Akun');
-      return;
-    }
-
-    final name = _nameController.text.trim();
-    final email = _emailController.text.trim().toLowerCase();
-    final password = _passwordController.text;
-    final confirmPassword = _confirmPasswordController.text;
-
-    try {
-      // 1. PANGGIL API REGISTRASI KE SERVER BACKEND
-      final dio = createDioClient();
-      final apiService = ApiService(dio);
-
-      final response = await apiService.register(
-        RegisterModel(
-          name: name,
-          email: email,
-          password: password,
-          passwordConfirmation: confirmPassword,
-        ),
-      );
-
-      // 2. SIMPAN KE TABEL USERS SQLITE (LOKAL)
-      final isLocalRegistered = await DatabaseHelper.instance.isEmailRegistered(email);
-      if (!isLocalRegistered) {
-        await DatabaseHelper.instance.registerUser(
-          nama: name,
-          email: email,
-          password: password,
-        );
-      }
-
-      if (!mounted) return;
-
-      // 3. DIALOG SUKSES DENGAN OPSI TAMBAH AKUN LAGI ATAU LOGIN
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.check_circle_outline,
-                  color: Colors.green,
-                  size: 64,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Registrasi Berhasil!',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  response.message ?? 'Akun baru ($email) berhasil didaftarkan dan tersimpan.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          // Reset formulir untuk menambah akun baru lainnya
-                          _nameController.clear();
-                          _emailController.clear();
-                          _passwordController.clear();
-                          _confirmPasswordController.clear();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Silakan masukkan data untuk menambah akun baru lainnya.'),
-                              backgroundColor: Colors.blueAccent,
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        },
-                        child: const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('Tambah Akun Lain'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LoginScreen(),
-                            ),
-                          );
-                        },
-                        child: const FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text('Masuk Sekarang'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    } on DioException catch (e) {
-      String errorMessage = 'Terjadi kesalahan pada server API.';
-      if (e.response != null && e.response?.data is Map) {
-        final data = e.response?.data as Map;
-        if (data['message'] != null) {
-          errorMessage = data['message'];
-        }
-        if (data['errors'] != null && data['errors'] is Map) {
-          final errors = data['errors'] as Map;
-          final errorList = <String>[];
-          errors.forEach((key, val) {
-            if (val is List) {
-              errorList.add(val.join('\n'));
-            } else {
-              errorList.add(val.toString());
-            }
-          });
-          if (errorList.isNotEmpty) {
-            errorMessage = errorList.join('\n');
-          }
-        }
-      } else if (e.type == DioExceptionType.connectionTimeout ||
-          e.type == DioExceptionType.receiveTimeout) {
-        errorMessage = 'Koneksi timeout. Silakan periksa jaringan internet Anda.';
-      } else if (e.error != null) {
-        errorMessage = e.error.toString();
-      }
-
-      if (!mounted) return;
-
-      // Cek apakah error karena email sudah terdaftar di server
-      final isEmailTaken = errorMessage.toLowerCase().contains('email sudah terdaftar') ||
-          errorMessage.toLowerCase().contains('email has already been taken');
-
-      if (isEmailTaken) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Row(
-              children: [
-                Icon(Icons.info_outline, color: Colors.blueAccent),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Email Sudah Terdaftar',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Text(
-                'Email ($email) sudah terdaftar.\n\n'
-                'Silakan langsung login menggunakan email ini atau gunakan email baru.',
-              ),
-            ),
-            actions: [
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _emailController.clear();
-                      },
-                      child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Ganti Email Baru')),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (context) => const LoginScreen()),
-                        );
-                      },
-                      child: const FittedBox(fit: BoxFit.scaleDown, child: Text('Langsung Login')),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-        return;
-      }
-
-      // Notifikasi dialog error API
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.red),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Registrasi API Gagal',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Text(errorMessage),
-          ),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Tutup'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.red),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Registrasi Gagal',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Text('Terjadi error: ${e.toString()}'),
-          ),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Tutup'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Daftar Akun'),
-        centerTitle: true,
+        title: const Text('Register'),
+        backgroundColor: Colors.blue,
       ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.blue.withValues(alpha: 0.25),
-                            blurRadius: 14,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Image.asset(
-                        'assets/images/logo.png',
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  "Daftar Akun Baru",
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Buat Akun Baru',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: _namaController,
+                  decoration: const InputDecoration(
+                    labelText: "Nama",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Isi data di bawah untuk mendaftar akun Absensiku',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Nama wajib diisi';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(
+                    labelText: "Email",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.email),
                   ),
-                  const SizedBox(height: 32),
-                  // Input Nama
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nama Lengkap',
-                      prefixIcon: Icon(Icons.person_outline),
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Nama lengkap wajib diisi';
-                      }
-                      return null;
-                    },
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Email wajib diisi';
+                    }
+                    if (!value.contains('@')) {
+                      return 'Format email tidak valid';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: "Password",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock),
                   ),
-                  const SizedBox(height: 16),
-                  // Input Email
-                  TextFormField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Email wajib diisi';
-                      }
-                      if (!value.contains('@')) {
-                        return 'Format email tidak valid';
-                      }
-                      return null;
-                    },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Password wajib diisi';
+                    }
+                    if (value.length < 6) {
+                      return 'Password minimal 6 karakter';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _confirmPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: "Konfirmasi Password",
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.lock_outline),
                   ),
-                  const SizedBox(height: 16),
-                  // Input Password
-                  TextFormField(
-                    controller: _passwordController,
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      helperText: 'Min. 8 karakter: kombinasi huruf besar, kecil & angka/simbol (cth: Rahasia123)',
-                      helperMaxLines: 2,
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Password wajib diisi';
-                      }
-                      if (value.length < 8) {
-                        return 'Password minimal 8 karakter (sesuai aturan server)';
-                      }
-                      final hasUppercase = value.contains(RegExp(r'[A-Z]'));
-                      final hasLowercase = value.contains(RegExp(r'[a-z]'));
-                      final hasNumberOrSymbol = value.contains(RegExp(r'[0-9!@#\$%^&*(),.?":{}|<>]'));
-
-                      if (!hasUppercase || !hasLowercase || !hasNumberOrSymbol) {
-                        return 'Harus ada huruf besar, kecil & angka/simbol (cth: Rahasia123)';
-                      }
-                      return null;
-                    },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Konfirmasi password wajib diisi';
+                    }
+                    if (value != _passwordController.text) {
+                      return 'Konfirmasi password tidak cocok';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _handleRegister,
+                    child: const Text("Register"),
                   ),
-                  const SizedBox(height: 16),
-                  // Input Cek Konfirmasi Password
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    obscureText: _obscureConfirmPassword,
-                    decoration: InputDecoration(
-                      labelText: 'Konfirmasi Password',
-                      prefixIcon: const Icon(Icons.lock_reset_outlined),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirmPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _obscureConfirmPassword = !_obscureConfirmPassword;
-                          });
-                        },
-                      ),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Konfirmasi password wajib diisi';
-                      }
-                      if (value != _passwordController.text) {
-                        return 'Konfirmasi password tidak cocok dengan password';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 24),
-                  // Tombol Daftar
-                  SizedBox(
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _confirmAndRegister,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Daftar Sekarang',
-                              style: TextStyle(fontSize: 16),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      const Text('Sudah punya akun?'),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LoginScreen(),
-                            ),
-                          );
-                        },
-                        child: const Text('Masuk di sini'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    );
+                  },
+                  child: const Text("Sudah punya akun? Login di sini"),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+class ResponseRegister {
+  final String message;
+  final bool success;
+
+  ResponseRegister({
+    required this.message,
+    required this.success,
+  });
+
+  factory ResponseRegister.fromJson(Map<String, dynamic> json) {
+    return ResponseRegister(
+      message: json['message']?.toString() ?? 'Registrasi berhasil',
+      success: json['success'] == true || json['data'] != null,
+    );
+  }
+}
+
+// Service API Register menggunakan DioClient
+class RegisterApiService {
+  static Future<ResponseRegister> register(
+    String nama,
+    String email,
+    String password,
+    String confirmPassword,
+  ) async {
+    final dio = createDioClient();
+    final dioClient = DioClient(dio);
+
+    final response = await dioClient.post(
+      '/api/register',
+      data: {
+        'name': nama,
+        'email': email,
+        'password': password,
+        'password_confirmation': confirmPassword,
+      },
+    );
+
+    if (response is Map<String, dynamic>) {
+      return ResponseRegister.fromJson(response);
+    } else {
+      return ResponseRegister(
+        message: 'Registrasi berhasil',
+        success: true,
+      );
+    }
   }
 }

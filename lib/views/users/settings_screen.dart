@@ -497,6 +497,194 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     }
   }
 
+  // ==================== RESET DATA MASTER (ABSENSI & CACHE) ====================
+  Future<void> _resetMasterData() async {
+    final allAbsensi = await DatabaseHelper.instance.getAllAbsensi();
+    final count = allAbsensi.length;
+
+    if (!mounted) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 28),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Reset Data Master',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Data Master Presensi:',
+                            style: TextStyle(fontSize: 12, color: Colors.black54),
+                          ),
+                          Text(
+                            '$count Catatan Absensi',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Tindakan reset data master ini akan:\n'
+                '• Menghapus seluruh riwayat presensi lokal SQLite secara permanen\n'
+                '• Menghapus data riwayat di server cloud (bila terhubung online)\n'
+                '• Membersihkan berkas cache sementara, gambar & singgahan APK\n'
+                '• Mengosongkan riwayat notifikasi presensi\n\n'
+                'Catatan: Akun login & data profil pengguna Anda tetap aman dan aktif.',
+                style: TextStyle(fontSize: 13, height: 1.4),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.delete_forever, size: 18),
+            label: const Text('Ya, Reset Data Master'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        content: Padding(
+          padding: EdgeInsets.symmetric(vertical: 16.0),
+          child: Row(
+            children: [
+              CircularProgressIndicator(color: Colors.redAccent),
+              SizedBox(width: 20),
+              Expanded(
+                child: Text(
+                  'Sedang mereset data master & cache...',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 1. Hapus riwayat di server API jika ada API ID
+      final itemsToDelete = await DatabaseHelper.instance.getAllAbsensi();
+      for (final it in itemsToDelete) {
+        final apiId = it[DatabaseHelper.columnApiId]?.toString();
+        if (apiId != null &&
+            apiId.isNotEmpty &&
+            apiId != '0' &&
+            apiId != 'null') {
+          try {
+            await AppApiService.deleteAbsensiFromApi(apiId);
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    // 2. Hapus seluruh data absensi SQLite secara permanen
+    await DatabaseHelper.instance.resetMasterAbsensi(cleanBlacklist: false);
+
+    // 3. Catat timestamp reset
+    await PrefHelper.setLastClearedTimestamp(DateTime.now().toIso8601String());
+
+    // 4. Bersihkan cache aplikasi & gambar
+    await AppCacheHelper.cleanAllCache();
+
+    // 5. Bersihkan riwayat notifikasi
+    await AppNotificationHelper.clearNotificationHistory();
+
+    // 6. Muat ulang status pengaturan (recalculate size & count)
+    await _loadSettings();
+
+    if (mounted) {
+      Navigator.pop(context); // Tutup dialog loading
+
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green),
+              SizedBox(width: 8),
+              Expanded(child: Text('Reset Master Berhasil')),
+            ],
+          ),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Data master riwayat presensi, cache lokal, dan notifikasi telah berhasil dibersihkan.',
+                style: TextStyle(fontSize: 14, height: 1.4),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Aplikasi kembali dalam kondisi bersih (fresh state). Akun login Anda tetap aman dan aktif.',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ],
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Selesai'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   Future<void> _openDeviceNotificationSettings() async {
     try {
       final opened = await openAppSettings();
@@ -909,13 +1097,13 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
     return Scaffold(
       appBar: AppBar(
         title: const Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.cloud_queue, size: 24),
             SizedBox(width: 8),
-            Flexible(
+            Expanded(
               child: Text(
                 'Pengaturan & Cloud',
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -1324,6 +1512,34 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
                         onTap: _clearTemporaryCache,
                       ),
+                      const Divider(height: 1),
+
+                      // RESET DATA MASTER & RIWAYAT ABSENSI
+                      ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: Colors.red.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent, size: 20),
+                        ),
+                        title: const Text(
+                          'Reset Data Master & Riwayat',
+                          style: TextStyle(
+                            color: Colors.redAccent,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        subtitle: Text(
+                          'Hapus seluruh catatan absensi lokal ($_totalLocalAbsensi data) & cache database',
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                        ),
+                        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.redAccent),
+                        onTap: _resetMasterData,
+                      ),
                     ],
                   ),
                 ),
@@ -1560,18 +1776,26 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
 
   Widget _buildSectionHeader(String title, IconData icon) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
+      padding: const EdgeInsets.only(left: 4.0, bottom: 10.0, top: 8.0),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Colors.blueAccent),
-          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: const Color(0xFF2563EB)),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               title,
               style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF475569),
+                letterSpacing: 0.2,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -1587,21 +1811,21 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: _autoCloudSync
-              ? [const Color(0xFF1E88E5), const Color(0xFF1565C0)]
-              : [const Color(0xFF546E7A), const Color(0xFF37474F)],
+              ? [const Color(0xFF0F172A), const Color(0xFF1E3A8A), const Color(0xFF2563EB)]
+              : [const Color(0xFF334155), const Color(0xFF475569)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: (_autoCloudSync ? Colors.blue : Colors.grey).withValues(alpha: 0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: const Color(0xFF1E3A8A).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -1609,18 +1833,18 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
-                  _autoCloudSync ? Icons.cloud_done : Icons.cloud_off,
+                  _autoCloudSync ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
                   color: Colors.white,
                   size: 26,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1638,14 +1862,14 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                         ),
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       _autoCloudSync
                           ? 'Semua data otomatis tersimpan ke API'
                           : 'Data tersimpan lokal, perlu sync manual',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontSize: 11.5,
+                        color: Colors.white.withValues(alpha: 0.82),
+                        fontSize: 12,
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -1655,21 +1879,22 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(8),
+              color: Colors.black.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.history, color: Colors.white70, size: 14),
-                const SizedBox(width: 6),
+                const Icon(Icons.history_rounded, color: Colors.white70, size: 15),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Terakhir: $_lastSyncTime',
-                    style: const TextStyle(color: Colors.white, fontSize: 11),
+                    style: const TextStyle(color: Colors.white, fontSize: 11.5),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -1677,15 +1902,15 @@ class _SettingsScreenState extends State<SettingsScreen> with WidgetsBindingObse
                 if (_pendingSyncCount > 0) ...[
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: Colors.amber,
-                      borderRadius: BorderRadius.circular(6),
+                      color: const Color(0xFFF59E0B),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       '$_pendingSyncCount Pending',
                       style: const TextStyle(
-                        color: Colors.black,
+                        color: Color(0xFF78350F),
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
                       ),

@@ -14,6 +14,7 @@ class DatabaseHelper {
   static const String colUserPhone = 'phone';
   static const String colUserAlamat = 'alamat';
   static const String colUserFoto = 'foto';
+  static const String colUserRole = 'role'; // 'admin' / 'user'
   static const String colUserCreatedAt = 'created_at';
 
   // ==================== TABEL ABSENSI ====================
@@ -31,6 +32,18 @@ class DatabaseHelper {
   static const String columnStatusSync = 'status_sync'; // 0 = belum, 1 = sudah
   static const String columnCreatedAt = 'created_at';
 
+// tabel lokasi
+  static const String tableLocations = 'locations';
+  static const String colLocationId = 'id';
+  static const String colLocationUserId = 'user_id';
+  static const String colLocationName = 'name';
+  static const String colLocationAddress = 'address';
+  static const String colLocationLatitude = 'latitude';
+  static const String colLocationLongitude = 'longitude';
+  static const String colLocationRadius = 'radius'; // meter
+  static const String colLocationCreatedAt = 'created_at';
+  static const String colLocationUpdatedAt = 'updated_at';
+  
   // ==================== TABEL DELETED ABSENSI (Blacklist Permanen) ====================
   static const String tableDeletedAbsensi = 'deleted_absensi';
   static const String colDeletedId = 'id';
@@ -57,12 +70,48 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, _databaseName);
 
-    return await openDatabase(
+    final db = await openDatabase(
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
+
+    // Pastikan kolom role ada di tabel users
+    try {
+      await db.execute('ALTER TABLE $tableUsers ADD COLUMN $colUserRole TEXT DEFAULT "user";');
+    } catch (_) {}
+
+    // Pastikan tabel locations ada
+    try {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS $tableLocations (
+          $colLocationId INTEGER PRIMARY KEY AUTOINCREMENT,
+          $colLocationUserId INTEGER,
+          $colLocationName TEXT NOT NULL,
+          $colLocationAddress TEXT,
+          $colLocationLatitude REAL NOT NULL,
+          $colLocationLongitude REAL NOT NULL,
+          $colLocationRadius REAL DEFAULT 100,
+          $colLocationCreatedAt TEXT,
+          $colLocationUpdatedAt TEXT
+        )
+      ''');
+      final locCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tableLocations')) ?? 0;
+      if (locCount == 0) {
+        await db.insert(tableLocations, {
+          colLocationName: 'Kantor Pusat Mobile Pro JP',
+          colLocationAddress: 'Jl. Jenderal Sudirman No. 45, Jakarta Pusat',
+          colLocationLatitude: -6.2087634,
+          colLocationLongitude: 106.845599,
+          colLocationRadius: 100.0,
+          colLocationCreatedAt: DateTime.now().toIso8601String(),
+          colLocationUpdatedAt: DateTime.now().toIso8601String(),
+        });
+      }
+    } catch (_) {}
+
+    return db;
   }
 
   // Membuat tabel baru saat database pertama kali diinisialisasi
@@ -77,6 +126,7 @@ class DatabaseHelper {
         $colUserPhone TEXT,
         $colUserAlamat TEXT,
         $colUserFoto TEXT,
+        $colUserRole TEXT DEFAULT "user",
         $colUserCreatedAt TEXT
       )
     ''');
@@ -111,6 +161,32 @@ class DatabaseHelper {
         $colDeletedAt TEXT
       )
     ''');
+
+    // 4. Buat Tabel Titik Lokasi Kantor
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $tableLocations (
+        $colLocationId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $colLocationUserId INTEGER,
+        $colLocationName TEXT NOT NULL,
+        $colLocationAddress TEXT,
+        $colLocationLatitude REAL NOT NULL,
+        $colLocationLongitude REAL NOT NULL,
+        $colLocationRadius REAL DEFAULT 100,
+        $colLocationCreatedAt TEXT,
+        $colLocationUpdatedAt TEXT
+      )
+    ''');
+
+    // Seed default office
+    await db.insert(tableLocations, {
+      colLocationName: 'Kantor Pusat Mobile Pro JP',
+      colLocationAddress: 'Jl. Jenderal Sudirman No. 45, Jakarta Pusat',
+      colLocationLatitude: -6.2087634,
+      colLocationLongitude: 106.845599,
+      colLocationRadius: 100.0,
+      colLocationCreatedAt: DateTime.now().toIso8601String(),
+      colLocationUpdatedAt: DateTime.now().toIso8601String(),
+    });
   }
 
   // Migrasi database jika versi bertambah
@@ -177,14 +253,22 @@ class DatabaseHelper {
     required String nama,
     required String email,
     required String password,
+    String? phone,
+    String? alamat,
+    String? foto,
+    String role = 'user',
   }) async {
     final db = await database;
     final row = {
       colUserNama: nama.trim(),
       colUserEmail: email.toLowerCase().trim(),
       colUserPassword: password,
+      colUserRole: role.toLowerCase().trim(),
       colUserCreatedAt: DateTime.now().toIso8601String(),
     };
+    if (phone != null) row[colUserPhone] = phone.trim();
+    if (alamat != null) row[colUserAlamat] = alamat.trim();
+    if (foto != null) row[colUserFoto] = foto.trim();
     return await db.insert(tableUsers, row);
   }
 
@@ -221,6 +305,21 @@ class DatabaseHelper {
     return null;
   }
 
+  // Ambil user berdasarkan ID
+  Future<Map<String, dynamic>?> getUserById(int id) async {
+    final db = await database;
+    final result = await db.query(
+      tableUsers,
+      where: '$colUserId = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (result.isNotEmpty) {
+      return result.first;
+    }
+    return null;
+  }
+
   // Ambil semua daftar users lokal
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     final db = await database;
@@ -235,6 +334,129 @@ class DatabaseHelper {
       where: 'LOWER($colUserEmail) = ?',
       whereArgs: [email.toLowerCase().trim()],
     );
+  }
+
+  // Hapus user berdasarkan ID (dengan opsi hapus seluruh riwayat absensi terkait)
+  Future<int> deleteUserById(int id, {bool deleteAbsensi = false}) async {
+    final db = await database;
+    if (deleteAbsensi) {
+      await db.delete(
+        tableAbsensi,
+        where: '$columnUserId = ?',
+        whereArgs: [id],
+      );
+    }
+    return await db.delete(
+      tableUsers,
+      where: '$colUserId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Perbarui data user secara lengkap oleh Administrator
+  Future<int> updateUserFull({
+    required int id,
+    required String nama,
+    required String email,
+    required String role,
+    String? phone,
+    String? alamat,
+    String? foto,
+    String? password,
+  }) async {
+    final db = await database;
+    final cleanEmail = email.toLowerCase().trim();
+
+    // Cek apakah email bentrok dengan ID lain
+    final exist = await db.query(
+      tableUsers,
+      where: 'LOWER($colUserEmail) = ? AND $colUserId != ?',
+      whereArgs: [cleanEmail, id],
+    );
+    if (exist.isNotEmpty) {
+      throw Exception('Email "$email" sudah dipakai oleh akun lain!');
+    }
+
+    final Map<String, dynamic> row = {
+      colUserNama: nama.trim(),
+      colUserEmail: cleanEmail,
+      colUserRole: role.toLowerCase().trim(),
+    };
+    if (phone != null) row[colUserPhone] = phone.trim();
+    if (alamat != null) row[colUserAlamat] = alamat.trim();
+    if (foto != null) row[colUserFoto] = foto.trim();
+    if (password != null && password.trim().isNotEmpty) {
+      row[colUserPassword] = password.trim();
+    }
+
+    // Sinkronkan nama di riwayat absensi user
+    try {
+      await db.update(
+        tableAbsensi,
+        {columnNama: nama.trim()},
+        where: '$columnUserId = ?',
+        whereArgs: [id],
+      );
+    } catch (_) {}
+
+    return await db.update(
+      tableUsers,
+      row,
+      where: '$colUserId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Hitung jumlah user per role
+  Future<Map<String, int>> getUserRoleCounts() async {
+    final users = await getAllUsers();
+    int adminCount = 0;
+    int userCount = 0;
+    for (final u in users) {
+      final role = (u[colUserRole] as String? ?? 'user').toLowerCase().trim();
+      final email = (u[colUserEmail] as String? ?? '').toLowerCase();
+      if (role == 'admin' || email.contains('admin')) {
+        adminCount++;
+      } else {
+        userCount++;
+      }
+    }
+    return {
+      'total': users.length,
+      'admin': adminCount,
+      'user': userCount,
+    };
+  }
+
+  // Ringkasan kehadiran untuk 1 akun pengguna
+  Future<Map<String, int>> getUserAbsensiSummary(int userId, {String? userName}) async {
+    final list = await getAllAbsensi(userId: userId, userName: userName);
+    int masuk = 0;
+    int pulang = 0;
+    int izin = 0;
+
+    for (final a in list) {
+      final tipe = (a[columnTipe] as String? ?? '').toLowerCase();
+      final ket = (a[columnKeterangan] as String? ?? '').toLowerCase();
+      final isIzin = tipe.contains('izin') ||
+          tipe.contains('sakit') ||
+          tipe.contains('cuti') ||
+          tipe.contains('dinas') ||
+          ket.contains('[izin]');
+      if (isIzin) {
+        izin++;
+      } else if (tipe == 'masuk' || tipe.contains('in')) {
+        masuk++;
+      } else if (tipe == 'pulang' || tipe == 'keluar' || tipe.contains('out')) {
+        pulang++;
+      }
+    }
+    return {
+      'total': list.length,
+      'masuk': masuk,
+      'pulang': pulang,
+      'izin': izin,
+    };
   }
 
   // Update password user berdasarkan email
@@ -408,14 +630,28 @@ class DatabaseHelper {
     return await db.insert(tableAbsensi, row);
   }
 
-  // 2. READ: Ambil semua data absensi (urut dari yang terbaru), bisa difilter per userId
-  Future<List<Map<String, dynamic>>> getAllAbsensi({int? userId}) async {
+  // 2. READ: Ambil semua data absensi (urut dari yang terbaru), difilter per akun (userId / userName)
+  Future<List<Map<String, dynamic>>> getAllAbsensi({int? userId, String? userName}) async {
     final db = await database;
-    if (userId != null) {
+    if (userId != null && userName != null && userName.trim().isNotEmpty) {
+      return await db.query(
+        tableAbsensi,
+        where: '$columnUserId = ? OR ($columnUserId IS NULL AND LOWER($columnNama) = ?)',
+        whereArgs: [userId, userName.toLowerCase().trim()],
+        orderBy: '$columnId DESC',
+      );
+    } else if (userId != null) {
       return await db.query(
         tableAbsensi,
         where: '$columnUserId = ?',
         whereArgs: [userId],
+        orderBy: '$columnId DESC',
+      );
+    } else if (userName != null && userName.trim().isNotEmpty) {
+      return await db.query(
+        tableAbsensi,
+        where: 'LOWER($columnNama) = ?',
+        whereArgs: [userName.toLowerCase().trim()],
         orderBy: '$columnId DESC',
       );
     }
@@ -425,9 +661,9 @@ class DatabaseHelper {
     );
   }
 
-  // 3. READ: Ambil data absensi berdasarkan user_id
-  Future<List<Map<String, dynamic>>> getAbsensiByUserId(int userId) async {
-    return await getAllAbsensi(userId: userId);
+  // 3. READ: Ambil data absensi berdasarkan user_id & userName
+  Future<List<Map<String, dynamic>>> getAbsensiByUserId(int userId, {String? userName}) async {
+    return await getAllAbsensi(userId: userId, userName: userName);
   }
 
   // 4. UPDATE: Update status sync atau keterangan
@@ -503,6 +739,25 @@ class DatabaseHelper {
       where: where,
       whereArgs: whereArgs,
     );
+  }
+
+  // 6b. RESET: Hapus seluruh data master absensi dan kelola blacklist sinkronisasi
+  Future<int> resetMasterAbsensi({bool cleanBlacklist = false}) async {
+    final db = await database;
+    final rows = await db.query(tableAbsensi);
+    for (final item in rows) {
+      await recordDeletedAbsensi(
+        apiId: item[columnApiId]?.toString(),
+        tanggal: (item[columnTanggal] as String? ?? '').trim(),
+        tipe: (item[columnTipe] as String? ?? '').trim(),
+        userId: item[columnUserId] as int?,
+        waktu: item[columnWaktu] as String?,
+      );
+    }
+    if (cleanBlacklist) {
+      await db.delete(tableDeletedAbsensi);
+    }
+    return await db.delete(tableAbsensi);
   }
 
   // ==================== FUNGSI BLACKLIST PENGHAPUSAN PERMANEN ====================
@@ -584,6 +839,7 @@ class DatabaseHelper {
     required String tanggal,
     required String tipe,
     int? userId,
+    String? userName,
   }) async {
     final db = await database;
     final cleanTipe = tipe.toLowerCase().trim();
@@ -602,9 +858,15 @@ class DatabaseHelper {
       whereArgs.addAll(['keluar', 'pulang', '%keluar%', '%pulang%']);
     }
 
-    if (userId != null && userId > 0) {
-      where += ' AND ($columnUserId = ? OR $columnUserId IS NULL OR $columnUserId = 0)';
+    if (userId != null && userId > 0 && userName != null && userName.trim().isNotEmpty) {
+      where += ' AND ($columnUserId = ? OR ($columnUserId IS NULL AND LOWER($columnNama) = ?))';
+      whereArgs.addAll([userId, userName.toLowerCase().trim()]);
+    } else if (userId != null && userId > 0) {
+      where += ' AND $columnUserId = ?';
       whereArgs.add(userId);
+    } else if (userName != null && userName.trim().isNotEmpty) {
+      where += ' AND LOWER($columnNama) = ?';
+      whereArgs.add(userName.toLowerCase().trim());
     }
 
     // Pastikan hanya mencocokkan record dengan waktu yang valid (bukan dummy/kosong/00:00:00)
@@ -646,6 +908,102 @@ class DatabaseHelper {
       tableAbsensi,
       row,
       where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // 4b. UPDATE DETAIL: Update riwayat absensi oleh admin secara terstruktur
+  Future<int> updateAbsensiRecord({
+    required int id,
+    required String tanggal,
+    required String waktu,
+    required String tipe,
+    required String keterangan,
+    String? nama,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final db = await database;
+    final Map<String, dynamic> row = {
+      columnTanggal: tanggal.trim(),
+      columnWaktu: waktu.trim(),
+      columnTipe: tipe.trim(),
+      columnKeterangan: keterangan.trim(),
+    };
+    if (nama != null && nama.trim().isNotEmpty) {
+      row[columnNama] = nama.trim();
+    }
+    if (latitude != null) row[columnLatitude] = latitude;
+    if (longitude != null) row[columnLongitude] = longitude;
+
+    return await db.update(
+      tableAbsensi,
+      row,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // 1b. CREATE MANUAL: Tambah absensi manual oleh admin
+  Future<int> insertAbsensiManual({
+    required String nama,
+    required String tanggal,
+    required String waktu,
+    required String tipe,
+    required String keterangan,
+    int? userId,
+    double? latitude,
+    double? longitude,
+  }) async {
+    final row = {
+      columnNama: nama.trim(),
+      columnTanggal: tanggal.trim(),
+      columnWaktu: waktu.trim(),
+      columnTipe: tipe.trim(),
+      columnKeterangan: keterangan.trim(),
+      columnStatusSync: 0,
+      columnCreatedAt: DateTime.now().toIso8601String(),
+    };
+    if (userId != null) row[columnUserId] = userId;
+    if (latitude != null) row[columnLatitude] = latitude;
+    if (longitude != null) row[columnLongitude] = longitude;
+
+    return await insertAbsensi(row);
+  }
+
+  // ==================== FUNGSI LOKASI KANTOR (CRUD) ====================
+  Future<List<Map<String, dynamic>>> getAllLocations() async {
+    final db = await database;
+    try {
+      return await db.query(tableLocations, orderBy: '$colLocationId ASC');
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<int> insertLocation(Map<String, dynamic> row) async {
+    final db = await database;
+    row[colLocationCreatedAt] = DateTime.now().toIso8601String();
+    row[colLocationUpdatedAt] = DateTime.now().toIso8601String();
+    return await db.insert(tableLocations, row);
+  }
+
+  Future<int> updateLocation(int id, Map<String, dynamic> row) async {
+    final db = await database;
+    row[colLocationUpdatedAt] = DateTime.now().toIso8601String();
+    return await db.update(
+      tableLocations,
+      row,
+      where: '$colLocationId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteLocation(int id) async {
+    final db = await database;
+    return await db.delete(
+      tableLocations,
+      where: '$colLocationId = ?',
       whereArgs: [id],
     );
   }

@@ -1,9 +1,11 @@
 import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:absensiku/services/network_helper.dart';
+
 // COMENT YANG LAUNCHER
 // import 'package:url_launcher/url_launcher.dart';
 
@@ -65,7 +67,10 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
         _isCheckingConnection = false;
         _currentAddress = "Anda sedang offline. Peta Google Maps dan geolokasi membutuhkan koneksi internet aktif.";
       });
-      NetworkHelper.showOfflineDialog(context, featureName: 'Peta Lokasi Google Maps');
+      NetworkHelper.showOfflineDialog(
+        context,
+        featureName: 'Peta Lokasi Google Maps',
+      );
       return;
     }
 
@@ -129,7 +134,9 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
             markerId: const MarkerId('currentLocation'),
             position: currentLatLng,
             infoWindow: const InfoWindow(title: 'Lokasi Anda Saat Ini'),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueRed,
+            ),
           ),
         };
       });
@@ -152,10 +159,7 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
     try {
       _mapController?.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: currentLatLng,
-            zoom: 16.0,
-          ),
+          CameraPosition(target: currentLatLng, zoom: 16.0),
         ),
       );
     } catch (_) {}
@@ -212,62 +216,114 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Peta Lokasi Presensi')),
+      appBar: AppBar(
+        title: const Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Peta Lokasi Presensi',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.my_location_rounded),
+            tooltip: 'Perbarui Lokasi',
+            onPressed: _checkPermissionsAndGetLocation,
+          ),
+        ],
+      ),
       body: !_isOnline
           ? Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        shape: BoxShape.circle,
+                padding: const EdgeInsets.all(28.0),
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
                       ),
-                      child: Icon(
-                        Icons.cloud_off_rounded,
-                        size: 72,
-                        color: Colors.red.shade400,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      'Peta Tidak Tersedia Saat Offline',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey.shade800,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Fitur Google Maps dan pelacakan GPS akurat membutuhkan sambungan internet aktif seperti aplikasi online lainnya.',
-                      style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.4),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      onPressed: _isCheckingConnection ? null : _checkPermissionsAndGetLocation,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(
+                          Icons.cloud_off_rounded,
+                          size: 54,
+                          color: Color(0xFFEF4444),
                         ),
                       ),
-                      icon: _isCheckingConnection
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.refresh),
-                      label: Text(_isCheckingConnection ? 'Memeriksa...' : 'Coba Lagi'),
-                    ),
-                  ],
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Peta Membutuhkan Internet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Fitur Google Maps & pencarian alamat akurat membutuhkan sambungan internet aktif.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF64748B),
+                          height: 1.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 22),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 46,
+                        child: ElevatedButton.icon(
+                          onPressed: _isCheckingConnection
+                              ? null
+                              : _checkPermissionsAndGetLocation,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2563EB),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            elevation: 0,
+                          ),
+                          icon: _isCheckingConnection
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh_rounded, size: 18),
+                          label: Text(
+                            _isCheckingConnection
+                                ? 'Memeriksa...'
+                                : 'Coba Sambungkan',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             )
@@ -277,7 +333,10 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
                 GoogleMap(
                   initialCameraPosition: CameraPosition(
                     target: _currentPosition != null
-                        ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+                        ? LatLng(
+                            _currentPosition!.latitude,
+                            _currentPosition!.longitude,
+                          )
                         : _defaultLocation,
                     zoom: 15.0,
                   ),
@@ -287,83 +346,124 @@ class _GoogleMapsScreenDay19State extends State<GoogleMapsScreenDay19> {
                   markers: _markers,
                   myLocationEnabled: true,
                   myLocationButtonEnabled: false,
-                  zoomControlsEnabled: true,
+                  zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
                 ),
 
-          // Card melayang di bagian bawah untuk menampilkan informasi alamat (aman dari overflow & overlap)
-          Positioned(
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: Card(
-              elevation: 5,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            "Alamat Anda Saat Ini:",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.my_location, color: Colors.blueAccent),
-                          tooltip: 'Perbarui Lokasi',
-                          onPressed: _checkPermissionsAndGetLocation,
+                // Card melayang di bagian bawah untuk menampilkan informasi alamat
+                Positioned(
+                  bottom: 20,
+                  left: 16,
+                  right: 16,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF0F172A)
+                              .withValues(alpha: 0.12),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(context).size.height * 0.22,
-                      ),
-                      child: SingleChildScrollView(
-                        child: Text(
-                          _currentAddress,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 13),
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.location_on_rounded,
+                                color: Color(0xFF2563EB),
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    "Lokasi Terdeteksi",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  if (_currentPosition != null)
+                                    Text(
+                                      '${_currentPosition!.latitude.toStringAsFixed(5)}, ${_currentPosition!.longitude.toStringAsFixed(5)}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            InkWell(
+                              onTap: _checkPermissionsAndGetLocation,
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Icon(
+                                  Icons.refresh_rounded,
+                                  color: Color(0xFF2563EB),
+                                  size: 18,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                    /*
-                    // COMENT YANG LAUNCHER
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _openInGoogleMaps,
-                        icon: const Icon(Icons.navigation, size: 18),
-                        label: const Text("Buka di Google Maps"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueAccent,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                        const SizedBox(height: 12),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          constraints: BoxConstraints(
+                            maxHeight:
+                                MediaQuery.of(context).size.height * 0.18,
+                          ),
+                          child: SingleChildScrollView(
+                            child: Text(
+                              _currentAddress,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: Color(0xFF334155),
+                                height: 1.45,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                    */
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

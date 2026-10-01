@@ -102,16 +102,41 @@ class AppApiService {
           if (password != null && password.isNotEmpty) {
             final dio = createDioClient();
             final apiService = ApiService(dio);
-            final res = await apiService.login(LoginModel(email: email, password: password));
-            final newToken = res.data?.token;
-            if (newToken != null && newToken.isNotEmpty) {
-              await PrefHelper.saveSession(
-                token: newToken,
-                userId: res.data?.user?.id ?? localUser[DatabaseHelper.colUserId] as int?,
-                name: res.data?.user?.name ?? localUser[DatabaseHelper.colUserNama] as String? ?? 'Pengguna',
-                email: email,
-              );
-              return newToken;
+            try {
+              final res = await apiService.login(LoginModel(email: email, password: password));
+              final newToken = res.data?.token;
+              if (newToken != null && newToken.isNotEmpty) {
+                await PrefHelper.saveSession(
+                  token: newToken,
+                  userId: res.data?.user?.id ?? localUser[DatabaseHelper.colUserId] as int?,
+                  name: res.data?.user?.name ?? localUser[DatabaseHelper.colUserNama] as String? ?? 'Pengguna',
+                  email: email,
+                );
+                return newToken;
+              }
+            } on DioException catch (_) {
+              // Jika login gagal (misal akun baru belum terdaftar di API), coba daftarkan otomatis ke API
+              try {
+                await apiService.register(
+                  RegisterModel(
+                    name: localUser[DatabaseHelper.colUserNama] as String? ?? 'Pengguna',
+                    email: email,
+                    password: password,
+                    passwordConfirmation: password,
+                  ),
+                );
+                final res = await apiService.login(LoginModel(email: email, password: password));
+                final newToken = res.data?.token;
+                if (newToken != null && newToken.isNotEmpty) {
+                  await PrefHelper.saveSession(
+                    token: newToken,
+                    userId: res.data?.user?.id ?? localUser[DatabaseHelper.colUserId] as int?,
+                    name: res.data?.user?.name ?? localUser[DatabaseHelper.colUserNama] as String? ?? 'Pengguna',
+                    email: email,
+                  );
+                  return newToken;
+                }
+              } catch (_) {}
             }
           }
         }
@@ -133,9 +158,21 @@ class AppApiService {
   }) async {
     final token = await ensureValidApiToken();
     if (token == null || token.isEmpty) {
+      if (!isFromSync) {
+        await PrefHelper.saveOfflineAbsensi({
+          'tipe': tipe,
+          'tanggal': tanggal,
+          'waktu': waktu,
+          'latitude': latitude ?? -6.200000,
+          'longitude': longitude ?? 106.816666,
+          'keterangan': (keterangan != null && keterangan.isNotEmpty)
+              ? keterangan
+              : 'Absen $tipe via Absensiku',
+        });
+      }
       return SubmitAbsensiResult(
         success: false,
-        message: 'Akun belum terhubung ke API (Mode Offline / Sesi Berakhir). Silakan login kembali dengan koneksi internet.',
+        message: 'Mode Offline: Disimpan di SharedPreferences. Otomatis dikirim ke server API saat online.',
       );
     }
 
@@ -301,11 +338,31 @@ class AppApiService {
             e.type == DioExceptionType.receiveTimeout ||
             e.type == DioExceptionType.sendTimeout ||
             e.type == DioExceptionType.connectionError) {
+          if (!isFromSync) {
+            await PrefHelper.saveOfflineAbsensi({
+              'tipe': tipe,
+              'tanggal': tanggal,
+              'waktu': waktu,
+              'latitude': lat,
+              'longitude': lng,
+              'keterangan': alamat,
+            });
+          }
           return SubmitAbsensiResult(
             success: false,
-            message: 'Koneksi ke server timeout atau tidak ada jaringan internet.',
+            message: 'Mode Offline: Disimpan di SharedPreferences. Otomatis dikirim ke server API saat online.',
           );
         }
+      }
+      if (!isFromSync) {
+        await PrefHelper.saveOfflineAbsensi({
+          'tipe': tipe,
+          'tanggal': tanggal,
+          'waktu': waktu,
+          'latitude': lat,
+          'longitude': lng,
+          'keterangan': alamat,
+        });
       }
       return SubmitAbsensiResult(success: false, message: e.toString());
     }
@@ -593,9 +650,13 @@ class AppApiService {
         if (e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.connectionError ||
             e.type == DioExceptionType.receiveTimeout) {
+          await PrefHelper.setPendingProfileUpdate({
+            'name': name.trim(),
+            'email': email.trim(),
+          });
           return UpdateProfileResult(
-            success: false,
-            message: 'Koneksi ke server timeout atau tidak ada jaringan internet.',
+            success: true,
+            message: 'Mode Offline: Profil disimpan di SharedPreferences. Otomatis disinkronkan ke server API saat online.',
           );
         }
         return UpdateProfileResult(
@@ -685,10 +746,37 @@ class AppApiService {
     );
   }
 
-  // 6. Sinkronkan semua data lokal SQLite yang belum tersinkron ke API
+  // 6. Sinkronkan semua data lokal SQLite & SharedPreferences yang belum tersinkron ke API
   static Future<SyncAllResult> syncAllPendingToApi() async {
+    // 0. Ambil dan masukkan antrean absensi offline dari SharedPreferences jika belum ada di SQLite
+    try {
+      final offlineList = await PrefHelper.getOfflineAbsensiList();
+      if (offlineList.isNotEmpty) {
+        final allLocal = await DatabaseHelper.instance.getAllAbsensi();
+        for (final item in offlineList) {
+          final tgl = item['tanggal']?.toString() ?? '';
+          final tipe = item['tipe']?.toString() ?? '';
+          final exists = allLocal.any((e) =>
+              e[DatabaseHelper.columnTanggal] == tgl &&
+              e[DatabaseHelper.columnTipe]?.toString().toLowerCase() == tipe.toLowerCase());
+          if (!exists) {
+            await DatabaseHelper.instance.insertAbsensi({
+              DatabaseHelper.columnTanggal: tgl,
+              DatabaseHelper.columnWaktu: item['waktu']?.toString() ?? '',
+              DatabaseHelper.columnTipe: tipe,
+              DatabaseHelper.columnKeterangan: item['keterangan']?.toString() ?? '',
+              DatabaseHelper.columnLatitude: item['latitude'],
+              DatabaseHelper.columnLongitude: item['longitude'],
+              DatabaseHelper.columnStatusSync: 0,
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
     final unsynced = await DatabaseHelper.instance.getUnsyncedAbsensi();
     if (unsynced.isEmpty) {
+      await PrefHelper.clearOfflineAbsensiList();
       return SyncAllResult(
         totalPending: 0,
         syncedCount: 0,
@@ -755,6 +843,10 @@ class AppApiService {
       }
     }
 
+    if (syncedCount > 0) {
+      await PrefHelper.clearOfflineAbsensiList();
+    }
+
     return SyncAllResult(
       totalPending: unsynced.length,
       syncedCount: syncedCount,
@@ -769,7 +861,7 @@ class AppApiService {
 
   static bool _isSyncing = false;
 
-  // 7. SINKRONISASI OTOMATIS MENYELURUH (Dua Arah: SQLite <-> Server API)
+  // 7. SINKRONISASI OTOMATIS MENYELURUH (Dua Arah: SQLite & SharedPreferences <-> Server API)
   static Future<Map<String, dynamic>> autoSyncAllData() async {
     if (_isSyncing) {
       return {
@@ -785,11 +877,27 @@ class AppApiService {
     bool profileSynced = false;
 
     try {
-      // 1. Kirim semua absensi lokal yang berstatus pending (0) ke API server
+      // 1. Kirim semua absensi lokal & offline SharedPreferences yang berstatus pending ke API server
       final pendingResult = await syncAllPendingToApi();
       pendingSynced = pendingResult.syncedCount;
 
-      // 2. Auto-save & Sinkronisasi Foto Profil Pengguna ke Cloud API
+      // 2. Cek apakah ada update profil offline yang tertunda di SharedPreferences
+      try {
+        final pendingProfile = await PrefHelper.getPendingProfileUpdate();
+        if (pendingProfile != null) {
+          final pName = pendingProfile['name']?.toString() ?? '';
+          final pEmail = pendingProfile['email']?.toString() ?? '';
+          if (pName.isNotEmpty && pEmail.isNotEmpty) {
+            final upRes = await updateProfileToApi(name: pName, email: pEmail);
+            if (upRes.success) {
+              await PrefHelper.clearPendingProfileUpdate();
+              profileSynced = true;
+            }
+          }
+        }
+      } catch (_) {}
+
+      // 3. Auto-save & Sinkronisasi Foto Profil Pengguna ke Cloud API
       try {
         final isPhotoSyncOn = await PrefHelper.isAutoPhotoSyncEnabled();
         if (isPhotoSyncOn) {

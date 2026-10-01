@@ -300,6 +300,21 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
       }
     }
 
+    // JIKA GA ONLINE, SIMPAN KE SHARED PREFERENCES (Offline Fallback)
+    if (!apiSuccess) {
+      await PrefHelper.saveOfflineAbsensi({
+        DatabaseHelper.columnApiId: null,
+        DatabaseHelper.columnUserId: _userId,
+        DatabaseHelper.columnNama: _userName,
+        DatabaseHelper.columnTanggal: tanggalStr,
+        DatabaseHelper.columnWaktu: waktuStr,
+        DatabaseHelper.columnTipe: 'Izin',
+        DatabaseHelper.columnKeterangan: fullKeterangan,
+        DatabaseHelper.columnLatitude: lat,
+        DatabaseHelper.columnLongitude: lon,
+      });
+    }
+
     // 3. Simpan ke database SQLite lokal
     await DatabaseHelper.instance.insertAbsensi({
       DatabaseHelper.columnApiId: apiId,
@@ -803,9 +818,18 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text(
-          'Pengajuan Izin / Sakit',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        title: const Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Pengajuan Izin / Sakit',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF0F172A),

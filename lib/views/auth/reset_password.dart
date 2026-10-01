@@ -109,138 +109,249 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reset Password'),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Icon(
-                        Icons.lock_reset,
-                        size: 48,
-                        color: Colors.blueAccent,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Lupa Password?',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Masukkan email akun Anda dan tentukan password baru',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                  ),
-                  const SizedBox(height: 28),
-                  // Form Email
-                  TextFormField(
-                    controller: _emailController,
-                    validator: _emailValidator,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'Email Terdaftar',
-                      prefixIcon: Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Form Password Baru
-                  TextFormField(
-                    controller: _passwordController,
-                    validator: _passwordValidator,
-                    obscureText: _isObscure,
-                    decoration: InputDecoration(
-                      labelText: 'Password Baru',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isObscure ? Icons.visibility_off : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _isObscure = !_isObscure;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // Form Konfirmasi Password Baru
-                  TextFormField(
-                    controller: _confirmPasswordController,
-                    validator: _confirmPasswordValidator,
-                    obscureText: _isObscure2,
-                    decoration: InputDecoration(
-                      labelText: 'Konfirmasi Password Baru',
-                      prefixIcon: const Icon(Icons.lock_reset_outlined),
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _isObscure2 ? Icons.visibility_off : Icons.visibility,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _isObscure2 = !_isObscure2;
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  // Tombol Reset Password
-                  SizedBox(
-                    height: 50,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _resetPassword,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Text(
-                              'Reset Password Sekarang',
-                              style: TextStyle(fontSize: 16),
+      backgroundColor: const Color(0xFF0F172A),
+      body: Stack(
+        children: [
+          // 1. Hero Gradient Header
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 230,
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFF0F172A),
+                    Color(0xFF1E3A8A),
+                    Color(0xFF2563EB),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                            onPressed: () => Navigator.pop(context),
+                            tooltip: 'Kembali',
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                    ),
+                            child: const Icon(Icons.lock_reset_rounded, color: Colors.white, size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Atur Ulang Kata Sandi',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.only(left: 12, top: 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Pemulihan Keamanan Akun 🔑',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Masukkan email terdaftar dan tentukan kata sandi baru',
+                              style: TextStyle(
+                                color: Color(0xFFCBD5E1),
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Kembali ke Login'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
-        ),
+
+          // 2. White Card Form Sheet
+          Positioned.fill(
+            top: 165,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black26,
+                    blurRadius: 20,
+                    offset: Offset(0, -6),
+                  ),
+                ],
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Form Email
+                      TextFormField(
+                        controller: _emailController,
+                        validator: _emailValidator,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email Terdaftar',
+                          hintText: 'nama@domain.com',
+                          prefixIcon: Icon(Icons.mail_outline_rounded, color: Color(0xFF2563EB)),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Form Password Baru
+                      TextFormField(
+                        controller: _passwordController,
+                        validator: _passwordValidator,
+                        obscureText: _isObscure,
+                        decoration: InputDecoration(
+                          labelText: 'Kata Sandi Baru',
+                          hintText: 'Minimal 6 karakter',
+                          prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF2563EB)),
+                          filled: true,
+                          fillColor: Colors.white,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _isObscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: const Color(0xFF64748B),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _isObscure = !_isObscure;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Form Konfirmasi Password Baru
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        validator: _confirmPasswordValidator,
+                        obscureText: _isObscure2,
+                        decoration: InputDecoration(
+                          labelText: 'Konfirmasi Kata Sandi Baru',
+                          hintText: 'Ulangi kata sandi baru',
+                          prefixIcon: const Icon(Icons.lock_reset_rounded, color: Color(0xFF2563EB)),
+                          filled: true,
+                          fillColor: Colors.white,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _isObscure2 ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: const Color(0xFF64748B),
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _isObscure2 = !_isObscure2;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Tombol Reset Password dengan Modern Gradient
+                      Container(
+                        height: 52,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1E3A8A), Color(0xFF2563EB)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF2563EB).withValues(alpha: 0.35),
+                              blurRadius: 12,
+                              offset: const Offset(0, 5),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: _isLoading ? null : _resetPassword,
+                            child: Center(
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      height: 22,
+                                      width: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Simpan Kata Sandi Baru',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                        letterSpacing: 0.3,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.arrow_back_rounded, size: 16, color: Color(0xFF64748B)),
+                          label: const Text(
+                            'Kembali ke Halaman Login',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
